@@ -29,9 +29,7 @@
 > — *Brendon Teo*
 
 <div align="center">
-<video src="docs/gifs/demo.mp4" autoplay loop muted playsinline width="90%">
-  <a href="docs/gifs/demo.mp4">▶ Watch the demo</a>
-</video>
+<img src="docs/gifs/demo.gif" alt="VibeDocs demo" width="90%">
 </div>
 
 ---
@@ -98,9 +96,7 @@ docker compose up -d --build
 **First login:** `admin` / `change_me_now` — change it immediately under your profile.
 
 <div align="center">
-<video src="docs/gifs/quickstart.mp4" autoplay loop muted playsinline width="80%">
-  <a href="docs/gifs/quickstart.mp4">▶ Watch startup</a>
-</video>
+<img src="docs/gifs/quickstart.gif" alt="One-command startup" width="80%">
 </div>
 
 ### Everyday controls
@@ -125,10 +121,10 @@ A typical engagement, start to finish:
 2. **Add a report** and pick the matching template (Web / Infra / API / …).
 3. **Fill report details** — testers, tools used, credentials, dates.
 4. **Add findings** — from the library, manually, or by importing a scan.
-   <div align="center"><video src="docs/gifs/add-finding.mp4" autoplay loop muted playsinline width="80%"></video></div>
+   <div align="center"><img src="docs/gifs/add-finding.gif" alt="Adding a finding" width="80%"></div>
 5. **Score with the CVSS calculator** and attach screenshots (auto-sized in Word).
 6. **Generate** a DRAFT for review, then the clean FINAL — as Word, PDF, or an encrypted ZIP.
-   <div align="center"><video src="docs/gifs/generate-report.mp4" autoplay loop muted playsinline width="80%"></video></div>
+   <div align="center"><img src="docs/gifs/generate-report.gif" alt="Generating a report" width="80%"></div>
 7. **Export the Excel tracker** for the client, and after remediation, spin up a **Retest** version.
 
 ---

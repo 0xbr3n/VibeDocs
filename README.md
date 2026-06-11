@@ -21,7 +21,7 @@
 > **VibeDocs** is my take on the report-writing grind every pentester knows too well.
 > I got tired of copy-pasting findings, re-numbering screenshots, and re-styling
 > the same Word tables, so I vibecoded a tool that does it for me. It manages
-> projects, a reusable findings library, CVSS scoring, scan auto-categorization,
+> projects, a reusable findings library, CVSS scoring, Infra VA Scans auto-categorization + Removal of Duplicate Findings,
 > and one-click **Word / PDF** generation with an **Excel risk-register** export —
 > all self-hosted, no cloud, no accounts. It's heavily **inspired by
 > [pwndoc](https://github.com/pwndoc/pwndoc)**, rebuilt my way in Python.
@@ -118,13 +118,19 @@ A typical engagement, start to finish:
 
 1. **Create a project** — client, scope targets (URLs / IPs), testing window.
    ![New project](docs/screenshots/07-new-project.png)
+   
 2. **Add a report** and pick the matching template (Web / Infra / API / …).
+   
 3. **Fill report details** — testers, tools used, credentials, dates.
+   
 4. **Add findings** — from the library, manually, or by importing a scan.
    <div align="center"><img src="docs/gifs/add-finding.gif" alt="Adding a finding" width="80%"></div>
+   
 5. **Score with the CVSS calculator** and attach screenshots (auto-sized in Word).
+   
 6. **Generate** a DRAFT for review, then the clean FINAL — as Word, PDF, or an encrypted ZIP.
    <div align="center"><img src="docs/gifs/generate-report.gif" alt="Generating a report" width="80%"></div>
+   
 7. **Export the Excel tracker** for the client, and after remediation, spin up a **Retest** version.
 
 ---

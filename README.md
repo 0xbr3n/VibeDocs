@@ -56,8 +56,6 @@
 
 ## 🖼️ Screenshots
 
-> Drop your own captures into `docs/screenshots/` — the filenames below are placeholders.
-
 | Dashboard | Report editor |
 |---|---|
 | ![Dashboard](docs/screenshots/01-dashboard.png) | ![Report editor](docs/screenshots/02-report-editor.png) |

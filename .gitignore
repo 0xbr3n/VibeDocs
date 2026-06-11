@@ -14,14 +14,15 @@ reports/
 node_modules/
 .DS_Store
 
-# Safety: never commit real report/tracker templates into the public repo —
-# they may carry client branding or PII. The app auto-generates generic
-# templates at runtime, so these folders ship empty (only .gitkeep is tracked).
-backend/word_templates/*.docx
-backend/word_templates/*.xlsx
-backend/word_templates/*.doc
-report-templates/*.docx
-report-templates/*.xlsx
-report-templates/*.xls
+# The shipped templates under backend/word_templates/ and report-templates/
+# are de-branded, generic VibeDocs templates (no client branding or PII) and
+# ARE meant to be committed. Only ignore template *backups* so stray snapshots
+# never sneak in, plus any scratch/dev artifacts.
+**/*.pre-*.docx
+**/*.pre-*.xlsx
+**/*.prev-*.xlsx
+**/*.bak
+**/*.backup
+~$*
 docs/_*.py
 docs/_*.jpg

@@ -156,8 +156,8 @@ VibeDocs/
 │       ├── routers/                                # API + page routes
 │       ├── services/                               # docx/excel/cvss/scan engines
 │       └── templates/  static/                     # UI
-├── word_templates/        # generated on first boot (ships empty)
-└── report-templates/      # tracker layouts (synthesised if empty)
+├── word_templates/        # bundled, ready-to-use report templates (.docx)
+└── report-templates/      # bundled Excel tracker layouts (.xlsx) + draft reports
 ```
 
 ---
@@ -184,7 +184,7 @@ launcher writes one for you with unique secrets). Common settings:
 
 **Port 8000 already in use?** Set `APP_PORT=8088` in `.env` and use <http://localhost:8088>.
 
-**Where are the templates?** The app generates starter Word templates on first boot and synthesises a clean Excel tracker, so the repo ships with empty template folders. Drop in your own branded `.docx` later — keep the same Jinja placeholders.
+**Where are the templates?** VibeDocs ships a full set of ready-to-use, generic report templates (Word) and Excel trackers under `backend/word_templates/` and `report-templates/` — no branding, no client data. Want your own house style? Drop your branded `.docx` in there, keeping the same Jinja placeholders. (If a folder is ever empty, the app falls back to generating starter templates on first boot.)
 
 **How do I start over?** `RESET.cmd` (or `docker compose down -v`), then `START.cmd`.
 

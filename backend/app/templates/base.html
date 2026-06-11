@@ -247,7 +247,7 @@
     </div>
   </header>
   <main>{% block content %}{% endblock %}</main>
-  <footer><span class="muted small">VibeDocs · A vibecoded report generator by Brendon Teo · inspired by <a href="https://github.com/pwndoc/pwndoc" target="_blank" rel="noopener">pwndoc</a></span></footer>
+  <footer><span class="muted small">VibeDocs · A vibecoded report generator</span></footer>
 
   <script nonce="{{ request.state.csp_nonce }}">
     // One emoji per theme so the topbar icon hints at what you're about to switch INTO.
@@ -557,7 +557,7 @@
   ..........
   |        |]    VibeDocs scratchpad v1
   \        /     Logged in as {{ user.username }}
-   `------'      Type 'help' for commands
+   `------'      Press Enter to save a note
 
         </pre>
         <ul class="vnw-list" id="vnw-list" aria-live="polite"></ul>
@@ -569,7 +569,7 @@
       <form class="vnw-prompt-row" id="vnw-form" autocomplete="off">
         <span class="vnw-prompt-sigil">$</span>
         <input class="vnw-input" id="vnw-input" type="text"
-               placeholder="add note · :help for commands"
+               placeholder="add a note and press Enter…"
                maxlength="2000" spellcheck="false"
                autocomplete="off" autocorrect="off" autocapitalize="off">
       </form>

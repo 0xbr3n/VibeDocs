@@ -1912,6 +1912,39 @@ def _render_retest_entries(f) -> str:
     return "\n\n".join(blocks)
 
 
+def _build_distribution_list(details: dict) -> list[dict]:
+    """Rows for the Word report's Distribution List table.
+
+    Prefers the new free-form `distribution_list` — a list of
+    `{name, role, purpose}` the user defines themselves (any role/title).
+    Falls back to the legacy fixed Agency-POC / Engagement-Partner /
+    Director / Manager fields for reports created before the flexible UI.
+    """
+    rows = details.get("distribution_list")
+    if isinstance(rows, list):
+        out = []
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            name = str(r.get("name") or "").strip()
+            role = str(r.get("role") or "").strip()
+            purpose = str(r.get("purpose") or "").strip() or "Recipient"
+            if name or role:
+                out.append({"name": name, "role": role, "purpose": purpose})
+        if out:
+            return out
+    # Legacy fallback (pre-flexible-UI reports).
+    legacy = [
+        (details.get("dist_poc_1"), "Agency POC", "Reviewer"),
+        (details.get("dist_poc_2"), "Agency POC", "Reviewer"),
+        (details.get("dist_ep"), "Engagement Partner", "Reviewer"),
+        (details.get("dist_ed"), "Engagement Director", "Reviewer"),
+        (details.get("dist_em"), "Engagement Manager", "Author"),
+    ]
+    return [{"name": str(n).strip(), "role": role, "purpose": purpose}
+            for (n, role, purpose) in legacy if n and str(n).strip()]
+
+
 def _build_context(rv: ReportVersion, db: Session) -> dict:
     """Assemble the docxtpl render context from the report version.
 
@@ -2242,6 +2275,9 @@ def _build_context(rv: ReportVersion, db: Session) -> dict:
         # in Report Details. Available as {{ scanning_tools }} (top-level) or
         # {{ details.scanning_tools }} for template consistency.
         "scanning_tools": (r.details or {}).get("scanning_tools") or [],
+        # Distribution List table rows ({name, role, purpose}). User-defined
+        # in Report Details; the Word template loops over `distribution_list`.
+        "distribution_list": _build_distribution_list(r.details or {}),
         "findings": findings_dicts,
         "severity_counts": sev_counts,
         "total_findings": len(findings_dicts),

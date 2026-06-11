@@ -2177,6 +2177,14 @@ def _render_and_save(tpl, prep_path: Path, output_path: Path,
         except Exception as e:                              # pragma: no cover
             _passlog.warning("combined chapter headings skipped: %s", e)
 
+    # Distribution List table: fill from the report's free-form recipients
+    # (each {name, role, purpose}). Done as a post-pass because docxtpl's
+    # {%tr%} single-row loop is unreliable on this table.
+    try:
+        _populate_distribution_list(output_path, context.get("distribution_list") or [])
+    except Exception as e:                                  # pragma: no cover
+        _passlog.warning("distribution list fill skipped: %s", e)
+
     # Exec-summary findings-table caption "as of <date>" -> last testing date.
     try:
         _fix_findings_caption_date(output_path, str(context.get("findings_as_of") or ""))
@@ -3389,7 +3397,8 @@ def _ensure_confidentiality_title(docx_path: Path) -> None:
         if (p.text or "").strip().lower() == "confidentiality statement":
             for run in p.runs:
                 try:
-                    run.font.color.rgb = RGBColor.from_string("FFFFFF")
+                    # VibeDocs brand violet (was white, for the old green page).
+                    run.font.color.rgb = RGBColor.from_string("7C5CFC")
                     run.font.bold = True
                     changed = True
                 except Exception:
@@ -3410,6 +3419,62 @@ def _ensure_confidentiality_title(docx_path: Path) -> None:
             doc.save(str(docx_path))
         except Exception:                                   # pragma: no cover
             pass
+
+
+def _populate_distribution_list(docx_path: Path, rows: list) -> None:
+    """Fill the Distribution List table (the one with a 'Role In Engagement'
+    header) with the report's free-form recipients. The template ships with a
+    header row + one empty style row; we clone that row once per recipient and
+    drop the empty original. Done in post-processing because docxtpl's {%tr%}
+    single-row loop misbehaves on this particular table."""
+    import copy
+    from docx import Document
+    from docx.table import _Row
+
+    clean = []
+    for r in (rows or []):
+        if not isinstance(r, dict):
+            continue
+        name = str(r.get("name") or "").strip()
+        role = str(r.get("role") or "").strip()
+        purpose = str(r.get("purpose") or "").strip() or "Recipient"
+        if name or role:
+            clean.append((name, role, purpose))
+    if not clean:
+        return  # leave the empty template row untouched
+
+    doc = Document(str(docx_path))
+    target = None
+    for tbl in doc.tables:
+        flat = " ".join(c.text for row in tbl.rows for c in row.cells).lower()
+        if "role in engagement" in flat and len(tbl.rows) >= 2 and len(tbl.columns) >= 3:
+            target = tbl
+            break
+    if target is None:
+        return
+
+    def _set(cell, text):
+        p = cell.paragraphs[0]
+        if p.runs:
+            p.runs[0].text = text
+            for extra in p.runs[1:]:
+                extra.text = ""
+        else:
+            p.add_run(text)
+        for extra_p in cell.paragraphs[1:]:
+            extra_p._element.getparent().remove(extra_p._element)
+
+    template_tr = target.rows[1]._tr
+    tbl_el = template_tr.getparent()
+    for (name, role, purpose) in clean:
+        new_tr = copy.deepcopy(template_tr)
+        tbl_el.append(new_tr)
+        row = _Row(new_tr, target)
+        _set(row.cells[0], name)
+        _set(row.cells[1], role)
+        _set(row.cells[2], purpose)
+    tbl_el.remove(template_tr)
+    doc.save(str(docx_path))
 
 
 def _add_combined_chapter_headings(

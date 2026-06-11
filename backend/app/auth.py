@@ -321,6 +321,19 @@ def get_current_user(
                       User.is_active == True)  # noqa: E712
               .first())
     if not user:
+        # Local-standalone resilience: the singleton "local" user's row id
+        # changes if the database is reset/recreated, which would 401 an
+        # otherwise-valid local session (e.g. file downloads then fail with
+        # "User not found or inactive"). It's a single-user, no-login mode, so
+        # resolving the local user by username instead of id is safe and
+        # auto-heals the session without forcing a re-login.
+        from .config import settings as _s
+        if username == _s.LOCAL_MODE_USERNAME:
+            user = (db.query(User)
+                      .filter(User.username == username,
+                              User.is_active == True)  # noqa: E712
+                      .first())
+    if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED,
                             "User not found or inactive")
     # Forced-MFA gate: block every non-enrollment path until the user

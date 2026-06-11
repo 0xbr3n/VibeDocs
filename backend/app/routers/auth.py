@@ -140,21 +140,20 @@ def register_user(
     db: Session = Depends(get_db),
 ):
     """Public self-registration. New accounts are always `consultant`."""
-    from ..services import rate_limit as rl
-    from ..database import engine as _engine
-    ip = rl.client_ip_from_request(request)
-    ok_ip, retry_after, _ = rl.hit_db(_engine, "register_ip", ip,
-                                       max_attempts=5, window_seconds=3600)
-    if not ok_ip:
-        raise HTTPException(429,
-            f"Too many registration attempts. Try again in {retry_after}s.")
-
     if not username or not password:
         raise HTTPException(400, "Username and password are required.")
     if len(password) < 8 or len(password) > 256:
         raise HTTPException(400, "Password must be 8–256 characters.")
     if db.query(User).filter(User.username == username).first():
         raise HTTPException(400, "Username already exists")
+    # Email is optional in the UI, but the column is NOT NULL + unique. When
+    # left blank, synthesise a stable placeholder so the insert succeeds; when
+    # supplied, reject duplicates with a clean 400 instead of a 500.
+    email = (email or "").strip() or None
+    if email and db.query(User).filter(User.email == email).first():
+        raise HTTPException(400, "That email is already registered.")
+    if not email:
+        email = f"{username}@vibedocs.local"
 
     user = User(
         username=username,
@@ -165,7 +164,11 @@ def register_user(
         is_active=True,
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(400, "That username or email is already in use.")
     db.refresh(user)
 
     db.add(AuditLog(actor_id=user.id, action="auth.self_register",

@@ -273,8 +273,8 @@
         <tr><td><code>{{ report.type }}</code></td><td>Report type label (e.g. "Initial Report", "Retest Report", "Final Report"). Shortcut alias for <code>{{ details.report_type }}</code>.</td></tr>
         <tr><td><code>{{ report.doc_version }}</code></td><td>Document version number from Report Details (e.g. "0.1", "1.0"). Shortcut alias for <code>{{ details.doc_version }}</code>.</td></tr>
         <tr><td colspan="2" style="background:var(--surface-2);font-size:12px;color:var(--text-2);padding:4px 10px"><strong>Report details — filled on the Report Details form per-report</strong></td></tr>
-        <tr><td><code>{{ details.application_name }}</code></td><td>Application / asset name (e.g. "BoB Web Portal", "10.0.0.0/24").</td></tr>
-        <tr><td><code>{{ details.client_name }}</code></td><td>Client / agency name override for this report (e.g. "GovTech Agency of Singapore").</td></tr>
+        <tr><td><code>{{ details.application_name }}</code></td><td>Application / asset name (e.g. "Acme Web Portal", "10.0.0.0/24").</td></tr>
+        <tr><td><code>{{ details.client_name }}</code></td><td>Client / company name override for this report (e.g. "Acme Corporation").</td></tr>
         <tr><td><code>{{ details.report_type }}</code></td><td>Report type label — one of: Initial Report, Retest Report, Final Report, Report Update.</td></tr>
         <tr><td><code>{{ details.report_date }}</code></td><td>ISO date the consultant set on the report-details form (YYYY-MM-DD).</td></tr>
         <tr><td><code>{{ details.tester_names | join(', ') }}</code></td><td>Comma-separated list of consultants who tested.</td></tr>

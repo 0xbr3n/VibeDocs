@@ -58,13 +58,31 @@ def _set_cell_bg(cell, hex_color: str):
     tc_pr.append(shd)
 
 
-def _add_heading(doc, text, level=1, color="1F4E79"):
+_VIOLET = "7C5CFC"        # VibeDocs brand accent
+_VIOLET_DK = "5B3FD6"
+_INK = "29313D"
+_MUTED = "8A86A8"
+
+
+def _add_heading(doc, text, level=1, color=_VIOLET):
     p = doc.add_paragraph()
     run = p.add_run(text)
     run.bold = True
     run.font.size = Pt(18 - level * 2)
     run.font.color.rgb = RGBColor.from_string(color)
     return p
+
+
+def _multi(cell, *parts):
+    """Put each part in its OWN paragraph inside the cell. docxtpl's {%tr%}
+    row-loop only detects a control tag when it is the ENTIRE text of a
+    paragraph; cramming '{%tr for ... %}{{ x }}' together (even as two runs)
+    makes the patcher drop the 'for' and leave an orphan 'endfor'. docxtpl
+    consumes the clean tag paragraph at render time, so no blank line remains."""
+    for p in list(cell.paragraphs):
+        p._element.getparent().remove(p._element)
+    for part in parts:
+        cell.add_paragraph(part)
 
 
 def _add_section_break(doc):
@@ -87,32 +105,130 @@ def _add_kv_table(doc, pairs):
     return table
 
 
-def _build_common(doc: Document, template_name: str):
-    # Cover
-    title = doc.add_paragraph()
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = title.add_run("VibeDocs")
-    r.bold = True; r.font.size = Pt(36); r.font.color.rgb = RGBColor.from_string("7C5CFC")
+def _add_footer(doc):
+    """A clean VibeDocs footer on every page — brand + confidentiality +
+    copyright + page number. No third-party / legacy entity names."""
+    sec = doc.sections[0]
+    footer = sec.footer
+    footer.is_linked_to_previous = False
+    p = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+    p.text = ""
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run("VibeDocs  ·  Confidential  ·  © {{ report_year }} VibeDocs  ·  Page ")
+    run.font.size = Pt(8)
+    run.font.color.rgb = RGBColor.from_string(_MUTED)
+    # PAGE field
+    fld = OxmlElement("w:fldSimple")
+    fld.set(qn("w:instr"), "PAGE")
+    r = OxmlElement("w:r")
+    rpr = OxmlElement("w:rPr")
+    sz = OxmlElement("w:sz"); sz.set(qn("w:val"), "16"); rpr.append(sz)
+    col = OxmlElement("w:color"); col.set(qn("w:val"), _MUTED); rpr.append(col)
+    r.append(rpr)
+    t = OxmlElement("w:t"); t.text = "1"; r.append(t)
+    fld.append(r)
+    p._p.append(fld)
 
-    sub = doc.add_paragraph()
-    sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = sub.add_run(template_name)
-    r.bold = True; r.font.size = Pt(24)
 
+def _build_cover(doc: Document, template_name: str):
+    for _ in range(3):
+        doc.add_paragraph()
+    brand = doc.add_paragraph(); brand.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = brand.add_run("VibeDocs")
+    r.bold = True; r.font.size = Pt(48); r.font.color.rgb = RGBColor.from_string(_VIOLET)
+    tag = doc.add_paragraph(); tag.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = tag.add_run("a vibecoded report generator")
+    r.italic = True; r.font.size = Pt(12); r.font.color.rgb = RGBColor.from_string(_MUTED)
+    for _ in range(3):
+        doc.add_paragraph()
+    t = doc.add_paragraph(); t.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = t.add_run(template_name)
+    r.bold = True; r.font.size = Pt(26); r.font.color.rgb = RGBColor.from_string(_INK)
+    s = doc.add_paragraph(); s.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = s.add_run("{{ report.name }}")
+    r.font.size = Pt(15); r.font.color.rgb = RGBColor.from_string("5A5276")
     for _ in range(4):
         doc.add_paragraph()
-
     _add_kv_table(doc, [
         ("Client", "{{ project.client_name }}"),
         ("Project", "{{ project.name }}"),
-        ("Report", "{{ report.name }}"),
-        ("Version", "v{{ report.version }}"),
-        ("Sector", "{{ project.sector }}"),
-        ("Testing window", "{{ project.testing_window }}"),
-        ("Generated", "{{ generated_at }}"),
+        ("Document version", "v{{ report.version }}"),
+        ("Document date", "{{ details.report_date }}"),
+        ("Classification", "CONFIDENTIAL"),
     ])
-
     doc.add_page_break()
+
+
+def _build_confidentiality(doc: Document):
+    h = doc.add_paragraph()
+    r = h.add_run("Confidentiality Statement")
+    r.bold = True; r.font.size = Pt(18); r.font.color.rgb = RGBColor.from_string(_VIOLET)
+    doc.add_paragraph()
+    for txt in (
+        "This report is strictly confidential and is intended solely for the use of "
+        "{{ project.client_name }}. It contains sensitive information regarding security "
+        "vulnerabilities and must be handled, stored, and transmitted accordingly.",
+        "The findings in this document represent a point-in-time assessment based on the "
+        "scope agreed for this engagement. Security is not static: new vulnerabilities may "
+        "emerge after the testing window, and changes to the environment may affect the "
+        "continued validity of these results.",
+        "No part of this report may be reproduced, distributed, or disclosed to any third "
+        "party without the prior written consent of {{ project.client_name }}.",
+        "This assessment was carried out on a best-effort basis. While reasonable care was "
+        "taken to identify security weaknesses within scope, the absence of a finding does "
+        "not guarantee the absence of a vulnerability.",
+    ):
+        doc.add_paragraph(txt)
+    doc.add_page_break()
+
+
+def _build_document_control(doc: Document):
+    _add_heading(doc, "Document Control", 1)
+    _add_kv_table(doc, [
+        ("Client name", "{{ project.client_name }}"),
+        ("Project name", "{{ project.name }}"),
+        ("Report title", "{{ report.name }}"),
+        ("Document version", "v{{ report.version }}"),
+        ("Document date", "{{ details.report_date }}"),
+        ("Classification", "Confidential"),
+        ("Prepared by", "{{ details.tester_names | join(', ') }}"),
+    ])
+    doc.add_paragraph()
+    _add_heading(doc, "Document Change History", 2)
+    table = doc.add_table(rows=2, cols=4)
+    table.style = "Light Grid Accent 1"
+    for i, htxt in enumerate(["Version", "Date", "Description of Changes", "Author"]):
+        c = table.rows[0].cells[i]; c.text = htxt
+        for run in c.paragraphs[0].runs:
+            run.bold = True; run.font.color.rgb = RGBColor.from_string("FFFFFF")
+        _set_cell_bg(c, _VIOLET)
+    # Single empty row (filled in post-processing from change_history).
+    for c in table.rows[1].cells:
+        c.text = ""
+    doc.add_paragraph()
+
+
+def _build_distribution(doc: Document):
+    _add_heading(doc, "Distribution List", 1)
+    table = doc.add_table(rows=2, cols=3)
+    table.style = "Light Grid Accent 1"
+    for i, htxt in enumerate(["Name and Title", "Role In Engagement", "Purpose"]):
+        c = table.rows[0].cells[i]; c.text = htxt
+        for run in c.paragraphs[0].runs:
+            run.bold = True; run.font.color.rgb = RGBColor.from_string("FFFFFF")
+        _set_cell_bg(c, _VIOLET)
+    # One empty template row — filled in post-processing from distribution_list.
+    for c in table.rows[1].cells:
+        c.text = ""
+    doc.add_page_break()
+
+
+def _build_common(doc: Document, template_name: str):
+    _add_footer(doc)
+    _build_cover(doc, template_name)
+    _build_confidentiality(doc)
+    _build_document_control(doc)
+    _build_distribution(doc)
 
 
 def _build_report_details_section(doc):
@@ -158,25 +274,26 @@ def _build_executive_summary(doc):
 
 def _build_findings_summary_table(doc):
     _add_heading(doc, "5. Summary of Findings", 1)
-    table = doc.add_table(rows=2, cols=5)
+    # 4 rows: header | {%tr for%} control | data (repeated) | {%tr endfor%} control.
+    # docxtpl deletes the two control rows and repeats the data row between them.
+    table = doc.add_table(rows=4, cols=5)
     table.style = "Light Grid Accent 1"
-    hdr = table.rows[0].cells
     headers = ["#", "Title", "Severity", "CVSS", "Status"]
     for i, h in enumerate(headers):
-        hdr[i].text = h
-        for run in hdr[i].paragraphs[0].runs:
+        c = table.rows[0].cells[i]
+        c.text = h
+        for run in c.paragraphs[0].runs:
             run.bold = True
-        _set_cell_bg(hdr[i], "1F4E79")
-        for run in hdr[i].paragraphs[0].runs:
             run.font.color.rgb = RGBColor.from_string("FFFFFF")
-
-    # Loop row using docxtpl {%tr ... %} syntax.
-    row = table.rows[1].cells
-    row[0].text = "{%tr for f in findings %}{{ f.index }}"
-    row[1].text = "{{ f.title }}"
-    row[2].text = "{{ f.severity }}"
-    row[3].text = "{{ f.cvss_score }}"
-    row[4].text = "{{ f.status }}{%tr endfor %}"
+        _set_cell_bg(c, _VIOLET)
+    table.rows[1].cells[0].text = "{%tr for f in findings %}"
+    data = table.rows[2].cells
+    data[0].text = "{{ f.index }}"
+    data[1].text = "{{ f.title }}"
+    data[2].text = "{{ f.severity }}"
+    data[3].text = "{{ f.cvss_score }}"
+    data[4].text = "{{ f.status }}"
+    table.rows[3].cells[0].text = "{%tr endfor %}"
 
 
 def _build_findings_detail_section(doc):
@@ -188,7 +305,7 @@ def _build_findings_detail_section(doc):
     # Per-finding header
     h = doc.add_paragraph()
     r = h.add_run("Finding {{ f.index }}: {{ f.title }}")
-    r.bold = True; r.font.size = Pt(14); r.font.color.rgb = RGBColor.from_string("1F4E79")
+    r.bold = True; r.font.size = Pt(14); r.font.color.rgb = RGBColor.from_string("7C5CFC")
 
     # Severity badge
     badge = doc.add_paragraph()
@@ -237,7 +354,7 @@ def _build_nmap_section(doc):
     doc.add_paragraph(
         "The following hosts, ports, and services were enumerated during the engagement."
     )
-    table = doc.add_table(rows=2, cols=7)
+    table = doc.add_table(rows=4, cols=7)
     table.style = "Light Grid Accent 1"
     headers = ["Host", "Hostname", "Port", "Proto", "Service", "Product", "Version"]
     for i, h in enumerate(headers):
@@ -245,15 +362,18 @@ def _build_nmap_section(doc):
         c.text = h
         for run in c.paragraphs[0].runs:
             run.bold = True
-
-    row = table.rows[1].cells
-    row[0].text = "{%tr for r in nmap_rows %}{{ r.host }}"
+            run.font.color.rgb = RGBColor.from_string("FFFFFF")
+        _set_cell_bg(c, _VIOLET)
+    table.rows[1].cells[0].text = "{%tr for r in nmap_rows %}"
+    row = table.rows[2].cells
+    row[0].text = "{{ r.host }}"
     row[1].text = "{{ r.hostname }}"
     row[2].text = "{{ r.port }}"
     row[3].text = "{{ r.protocol }}"
     row[4].text = "{{ r.service }}"
     row[5].text = "{{ r.product }}"
-    row[6].text = "{{ r.version }}{%tr endfor %}"
+    row[6].text = "{{ r.version }}"
+    table.rows[3].cells[0].text = "{%tr endfor %}"
 
 
 def _build_template(template_name: str, *, include_nmap: bool = False) -> Document:

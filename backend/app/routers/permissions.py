@@ -71,23 +71,15 @@ def effective_access(db: Session, user: User, report: Report) -> Optional[Access
         if user.id in assigned_ids:
             return AccessLevel.edit
 
-    # "Open by default" fallback — mirrors the frontend's CAN_EDIT logic:
-    #   CAN_EDIT = (MY_ACCESS == null) ? true : (MY_ACCESS === "edit" || …)
-    # If no explicit ReportAccess grants exist for this report it is
-    # "unlocked", and any authenticated user gets edit access. Once an admin
-    # adds at least one explicit grant the report is "locked down" and only
-    # those grantees (plus the owner / lead / admins above) have access.
-    # This lets a newly-created consultant navigate to any unshared report
-    # and contribute findings without requiring per-user setup.
-    explicit_grant_count = (
-        db.query(ReportAccess.id)
-          .filter(ReportAccess.report_id == report.id)
-          .limit(1)
-          .count()
-    )
-    if explicit_grant_count == 0:
-        return AccessLevel.edit
-
+    # Secure by default: anyone who is not the owner, project lead, an
+    # assigned team member, an explicit grantee, or an admin gets NO access.
+    #
+    # (Previously this fell through to "open by default" — ANY authenticated
+    # user was granted EDIT on every report without an explicit grant. On a
+    # multi-user / public deployment where anyone can self-register, that is a
+    # broken-access-control / IDOR: a stranger could read and edit other
+    # teams' reports just by guessing the URL. Grant access explicitly via the
+    # report's Access tab, or assign the user to the parent project.)
     return None
 
 
@@ -144,20 +136,11 @@ def user_can_see_project(db: Session, user: User, project: Project) -> bool:
     if granted_report:
         return True
 
-    # "Open by default": if the project has any report with no explicit
-    # ReportAccess grants it is "unlocked" — any authenticated user may
-    # view the project so they can navigate to those open reports.
-    # Mirrors the effective_access() "open by default" fallback.
-    open_report = (
-        db.query(Report.id)
-          .filter(Report.project_id == project.id)
-          .outerjoin(ReportAccess, ReportAccess.report_id == Report.id)
-          .group_by(Report.id)
-          .having(func.count(ReportAccess.id) == 0)
-          .limit(1)
-          .first()
-    ) is not None
-    return open_report
+    # Secure by default: no implicit "open" visibility. A user who is not an
+    # admin/senior, the lead, an assigned member, or a grantee on some report
+    # in this project cannot see the project. (Mirrors the effective_access()
+    # change that removed the "open by default" IDOR.)
+    return False
 
 
 def require_project_visibility(db: Session, user: User, project: Project) -> None:

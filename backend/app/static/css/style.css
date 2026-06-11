@@ -125,7 +125,7 @@ a.report-row:hover > div{
    contrast against the page is what we want — but we lift the text a touch
    so it doesn't look the exact same as the accent line. */
 html[data-theme="light"] .btn-primary,
-html[data-theme="solarized"] .btn-primary{ color:#a3d23a; }
+html[data-theme="solarized"] .btn-primary{ color:#fff; }
 .btn-primary:hover{
   transform:translateY(-1px);
   background:linear-gradient(180deg, #233224 0%, #161d12 100%);
@@ -341,8 +341,8 @@ html[data-theme="dark"]{
   --text-2:#9ca3af;
   --text-3:#6b7280;
   --text-4:#4b5563;
-  --accent:#a3d23a;
-  --accent-dark:#7C5CFC;
+  --accent:#7C5CFC;
+  --accent-dark:#5B3FD6;
   --accent-soft:rgba(124,92,252,.12);
   --accent-line:rgba(124,92,252,.35);
   /* Dark-mode severity palette: same hue rotation as light, lighter
@@ -383,8 +383,8 @@ html[data-theme="midnight"]{
   --text-2:#9aa3b2;
   --text-3:#6b7587;
   --text-4:#4a5363;
-  --accent:#a3d23a;
-  --accent-dark:#7C5CFC;
+  --accent:#7C5CFC;
+  --accent-dark:#5B3FD6;
   --accent-soft:rgba(124,92,252,.10);
   --accent-line:rgba(124,92,252,.30);
   --critical-bg:rgba(127,29,29,.32);  --critical-fg:#fda4a4; --critical-line:rgba(220,38,38,.5);

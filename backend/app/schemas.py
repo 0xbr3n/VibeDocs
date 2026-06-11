@@ -23,7 +23,12 @@ class UserCreate(BaseModel):
 class UserOut(BaseModel):
     id: int
     username: str
-    email: EmailStr
+    # Plain str (not EmailStr) on the RESPONSE: stored emails may be synthetic
+    # placeholders for accounts created without one (e.g. the local-standalone
+    # user "local@standalone.local", or self-registrations "<user>@vibedocs.local").
+    # Strict EmailStr validation on output rejects reserved TLDs like .local and
+    # 500s the whole endpoint. Input is still validated via UserCreate.email.
+    email: str
     full_name: Optional[str] = None
     role: Role
     is_active: bool

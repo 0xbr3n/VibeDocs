@@ -8,7 +8,7 @@
   <!-- Cache-bust query string bumped whenever style.css ships a change
        that interacts with layout (topbar z-index, dropdown background,
        new component styles). Saves users a hard refresh. -->
-  <link rel="stylesheet" href="/static/css/style.css?v=20260612a">
+  <link rel="stylesheet" href="/static/css/style.css?v=20260612b">
   <script src="/static/js/htmx.min.js?v=2.0.3" defer></script>
   <script nonce="{{ request.state.csp_nonce }}">
     // Apply saved theme as early as possible to avoid a flash of the wrong colors.
@@ -529,7 +529,7 @@
         <span class="vnw-dot vnw-dot-y" aria-hidden="true"></span>
         <span class="vnw-dot vnw-dot-g" aria-hidden="true"></span>
         <span class="vnw-title">
-          {{ user.username or 'consultant' }}ddrg:~/notes
+          {{ user.username or 'consultant' }}@vibedocs:~/notes
         </span>
         {# Single Minimise control. The old × (close) button was
            removed — it was redundant with minimise and users reported
@@ -552,10 +552,12 @@
 
       <div class="vnw-body" id="vnw-body" tabindex="0">
         <pre class="vnw-banner" id="vnw-banner">
- ___   ___   ___
-|   \ | _ \ / __|   VibeDocs scratchpad v1
-| |) ||   /| (_ |   Logged in as {{ user.username }}
-|___/ |_|_\ \___|   Type 'help' for commands
+    ( (
+     ) )
+  ..........
+  |        |]    VibeDocs scratchpad v1
+  \        /     Logged in as {{ user.username }}
+   `------'      Type 'help' for commands
 
         </pre>
         <ul class="vnw-list" id="vnw-list" aria-live="polite"></ul>

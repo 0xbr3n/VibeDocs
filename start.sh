@@ -35,23 +35,37 @@ if [ ! -f .env ]; then
   } > .env
 fi
 
+# Pick free host ports (reuse our app's port if it's already running, else
+# find the first free one) so VibeDocs coexists with anything on 8000/8025.
+free_port() {
+  local p=$1
+  while (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; do exec 3>&- 3<&-; p=$((p+1)); done
+  echo "$p"
+}
+PORT=$(docker port vibedocs_app 8000/tcp 2>/dev/null | head -1 | sed 's/.*://')
+[ -z "${PORT:-}" ] && PORT=$(free_port 8000)
+MPORT=$(docker port vibedocs_mailpit 8025/tcp 2>/dev/null | head -1 | sed 's/.*://')
+[ -z "${MPORT:-}" ] && MPORT=$(free_port 8025)
+export APP_PORT="$PORT" MAILPIT_UI_PORT="$MPORT"
+echo "  Using web port $PORT and mail port $MPORT"
+
 echo "  Building and starting (first build can take a few minutes)..."
 docker compose up -d --build
 
 echo -n "  Waiting for first-boot seeding"
 for _ in $(seq 1 60); do
-  if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then echo " — ready!"; break; fi
+  if curl -fsS "http://localhost:$PORT/health" >/dev/null 2>&1; then echo " — ready!"; break; fi
   echo -n "."; sleep 3
 done
 
 echo
 echo "  ============================================================"
 echo "    READY!  VibeDocs is running."
-echo "    Web app .......  http://localhost:8000"
-echo "    Email inbox ...  http://localhost:8025  (Mailpit)"
+echo "    Web app .......  http://localhost:$PORT"
+echo "    Email inbox ...  http://localhost:$MPORT  (Mailpit)"
 echo "    Login:  admin / change_me_now   (change it after first login)"
 echo "  ============================================================"
 
 # Best-effort open the browser
-( command -v open  >/dev/null && open http://localhost:8000 ) 2>/dev/null || \
-( command -v xdg-open >/dev/null && xdg-open http://localhost:8000 ) 2>/dev/null || true
+( command -v open  >/dev/null && open "http://localhost:$PORT" ) 2>/dev/null || \
+( command -v xdg-open >/dev/null && xdg-open "http://localhost:$PORT" ) 2>/dev/null || true

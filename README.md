@@ -36,6 +36,7 @@
 
 ## ✨ Features
 
+- **Dual access modes — SSO or local standalone** — run it for a team with **Azure AD / Entra ID single sign-on**, or as a single user with a **no-login local standalone mode**. Same app, same features either way, with **2FA (TOTP)** available in both.
 - **Projects & reports** — organise engagements by client, scope and testing window.
 - **Report templates** — Web, Infrastructure (VA & VAPT), API, Mobile, Thick Client, Cloud and more. Each ships with its own scope-of-work and methodology.
 - **Custom Report Template Feature** - Allows users to upload custom word report templates using defined placeholders.
@@ -49,7 +50,6 @@
 - **Infra VA Retest workflow** — dated follow-up entries and per-finding status for a clear remediation trail. Auto-closes findings not found in original scan results.
 - **Secure delivery** — package outputs into an AES-256 encrypted ZIP with reusable per-project passwords.
 - **Roles & review** — admin / senior / consultant / viewer, with a findings-approval and report-review workflow.
-- **Dual access modes  (SSO or local standalone)** — run it for a team with Azure AD / Entra ID single sign-on, or as a single user with a no-login local standalone mode. Same app, same features either way, with 2FA (TOTP) available in both.
 - **2FA** - Links to Google/Microsoft Authenticator for an added layer of security.
 
 ---

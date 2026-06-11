@@ -40,7 +40,7 @@
 - **Report templates** — Web, Infrastructure (VA & VAPT), API, Mobile, Thick Client, Cloud and more. Each ships with its own scope-of-work and methodology.
 - **Custom Report Template Feature** - Allows users to upload custom word report templates using defined placeholders.
 - **Findings library** — a reusable, peer-reviewed catalogue so your wording stays consistent. Insert with one click and tailor per report.
-- **Built-in CVSS calculator** — score findings inline (CVSS 3.0 / 3.1 / 4.0) with live vector + severity, plus a bulk 4.0 → 3.1 re-rate.
+- **Built-in CVSS calculator** — score findings inline (CVSS 2.0 / 3.1 / 4.0) with live vector + severity, plus a bulk 4.0 → 3.1 re-rate.
 - **Scan auto-categorization** — import Nessus / Nmap / scan PDFs; VibeDocs categorizes, de-duplicates (CVE-aware) and groups findings for you.
 - **AWS VA Scan Categorisation** - Import Prowler/Steampipe CSVs files and categorises them into their respective AWS Services.
 - **One-click Word & PDF** — generate a polished `.docx` (and PDF via LibreOffice) with screenshots embedded at a consistent width.

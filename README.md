@@ -6,7 +6,7 @@
 
 ### A vibecoded pentest report generator — by Brendon Teo
 
-*Turn messy penetration-test findings into clean, consistent Word & PDF deliverables — locally, in one command.*
+*Turn tedious penetration-test findings into clean, consistent Word & PDF deliverables. So that you can continue vibing.*
 
 [![Docker](https://img.shields.io/badge/run%20with-Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/products/docker-desktop)
 [![FastAPI](https://img.shields.io/badge/built%20with-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)

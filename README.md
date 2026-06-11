@@ -19,11 +19,11 @@
 ---
 
 > **VibeDocs** is my take on the report-writing grind every pentester knows too well.
-> I got tired of copy-pasting findings, re-numbering screenshots, and re-styling
-> the same Word tables, so I vibecoded a tool that does it for me. It manages
+> I got tired of taking hours copy-pasting findings, re-numbering screenshots, and re-styling
+> the same Word tables. So I vibecoded a tool that does it for me. It manages
 > projects, a reusable findings library, CVSS scoring, Infra VA Scans auto-categorization + Removal of Duplicate Findings,
 > and one-click **Word / PDF** generation with an **Excel risk-register** export —
-> all self-hosted, no cloud, no accounts. It's heavily **inspired by
+> all self-hosted, no cloud, no accounts. Just a docker image. It's heavily **inspired by
 > [pwndoc](https://github.com/pwndoc/pwndoc)**, rebuilt my way in Python.
 >
 > — *Brendon Teo*
@@ -38,16 +38,19 @@
 
 - **Projects & reports** — organise engagements by client, scope and testing window.
 - **Report templates** — Web, Infrastructure (VA & VAPT), API, Mobile, Thick Client, Cloud and more. Each ships with its own scope-of-work and methodology.
+- **Custom Report Template Feature** - Allows users to upload custom word report templates using defined placeholders.
 - **Findings library** — a reusable, peer-reviewed catalogue so your wording stays consistent. Insert with one click and tailor per report.
 - **Built-in CVSS calculator** — score findings inline (CVSS 3.0 / 3.1 / 4.0) with live vector + severity, plus a bulk 4.0 → 3.1 re-rate.
 - **Scan auto-categorization** — import Nessus / Nmap / scan PDFs; VibeDocs categorizes, de-duplicates (CVE-aware) and groups findings for you.
+- **AWS VA Scan Categorisation** - Import Prowler/Steampipe CSVs files and categorises them into their respective AWS Services.
 - **One-click Word & PDF** — generate a polished `.docx` (and PDF via LibreOffice) with screenshots embedded at a consistent width.
 - **Excel risk-register** — export a clean tracker (one row per finding) or import a client-maintained one to sync statuses.
 - **Combined reports** — merge multiple test types (e.g. Web + API) into one document, each as its own chapter.
-- **Retest workflow** — dated follow-up entries and per-finding status for a clear remediation trail.
+- **Infra VA Retest workflow** — dated follow-up entries and per-finding status for a clear remediation trail. Auto-closes findings not found in original scan results.
 - **Secure delivery** — package outputs into an AES-256 encrypted ZIP with reusable per-project passwords.
 - **Roles & review** — admin / senior / consultant / viewer, with a findings-approval and report-review workflow.
-- **2FA (TOTP)** and an optional SSO scaffold.
+- **Dual access modes  (SSO or local standalone)** — run it for a team with Azure AD / Entra ID single sign-on, or as a single user with a no-login local standalone mode. Same app, same features either way, with 2FA (TOTP) available in both.
+- **2FA** - Links to Google/Microsoft Authenticator for an added layer of security.
 
 ---
 

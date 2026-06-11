@@ -1,10 +1,10 @@
 """
-Generate sample generic Word templates for each VAPT type.
+Generate sample VibeDocs-style Word templates for each VAPT type.
 
 Run with:  docker compose exec app python -m app.gen_word_templates
             (or locally: cd backend && python -m app.gen_word_templates)
 
-These are STARTER templates - replace them with your real custom-branded .docx
+These are STARTER templates - replace them with your real VibeDocs-branded .docx
 files later. Make sure your real templates contain the same Jinja placeholders so
 the renderer keeps working.
 

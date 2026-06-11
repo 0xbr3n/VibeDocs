@@ -350,7 +350,7 @@ def _maybe_inject_jinja2(dest: Path) -> dict:
 
 
 def _maybe_auto_transform(dest: Path) -> dict:
-    """Best-effort: convert a freshly-uploaded generic template
+    """Best-effort: convert a freshly-uploaded VibeDocs-style template
     into a docxtpl-ready one in place.
 
     Why this is here

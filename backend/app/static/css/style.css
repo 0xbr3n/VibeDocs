@@ -565,13 +565,15 @@ a:hover{text-decoration:underline}
 }
 html[data-theme="dark"] .brand-mark{ color:#fff !important; }
 .brand-mark .dot{
-  display:inline-block;width:7px;height:7px;border-radius:50%;
-  background:var(--accent);margin-left:1px;align-self:flex-end;margin-bottom:3px;
-  box-shadow:0 0 8px rgba(124,92,252,.55);
+  /* VibeDocs coffee mark — replaces the old accent dot. Recolored to the
+     brand violet with a transparent background so it reads on light + dark. */
+  display:inline-block;width:20px;height:20px;border-radius:0;
+  background:url('/static/img/coffee.png') center/contain no-repeat;
+  margin-left:3px;align-self:flex-end;margin-bottom:0;box-shadow:none;
 }
 /* Auth-shell variant: bigger logo on the login / forgot-password / etc. cards */
 .auth-card .brand-mark{ font-size:22px !important; }
-.auth-card .brand-mark .dot{ width:9px;height:9px;margin-bottom:4px }
+.auth-card .brand-mark .dot{ width:26px;height:26px;margin-bottom:1px }
 .topbar nav{display:flex;gap:4px;align-items:center}
 .topbar nav a{
   color:var(--text-2);padding:6px 12px;border-radius:6px;font-weight:500;font-size:13px;

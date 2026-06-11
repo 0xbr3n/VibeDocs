@@ -2,9 +2,7 @@
 
 The list is stored at /data/config/company_aliases.json inside the container.
 On first read the file is seeded with a couple of generic example entity names
-so a fresh deployment works without admin configuration. Edit these in the
-admin panel to match your own consultancy / testing-company name(s); they are
-used to recognise (and strip) the auditor's own company name from scope text.
+so a fresh deployment works without admin configuration.
 """
 from __future__ import annotations
 import json

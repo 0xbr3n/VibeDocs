@@ -49,8 +49,8 @@ _HTML_SHELL = """\
            border:1px solid #e5e7eb;overflow:hidden">
       <tr><td style="background:#0a0c10;padding:20px 24px">
         <span style="color:#fff;font-size:20px;font-weight:800;
-                     letter-spacing:-0.02em">VibeDocs<span style="color:#7C5CFC">.</span></span>
-        <span style="color:#9ca3af;font-size:12px;margin-left:10px">VAPT Reporter</span>
+                     letter-spacing:-0.02em">VibeDocs<span style="margin-left:3px">&#9749;</span></span>
+        <span style="color:#9ca3af;font-size:12px;margin-left:10px">Report Generator</span>
       </td></tr>
       __BODY__
     </table>

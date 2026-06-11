@@ -13,3 +13,15 @@ uploads/
 reports/
 node_modules/
 .DS_Store
+
+# Safety: never commit real report/tracker templates into the public repo —
+# they may carry client branding or PII. The app auto-generates generic
+# templates at runtime, so these folders ship empty (only .gitkeep is tracked).
+backend/word_templates/*.docx
+backend/word_templates/*.xlsx
+backend/word_templates/*.doc
+report-templates/*.docx
+report-templates/*.xlsx
+report-templates/*.xls
+docs/_*.py
+docs/_*.jpg

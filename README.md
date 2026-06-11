@@ -37,18 +37,18 @@
 
 ## ✨ Features
 
-- 📁 **Projects & reports** — organise engagements by client, scope and testing window.
-- 🧩 **Report templates** — Web, Infrastructure (VA & VAPT), API, Mobile, Thick Client, Cloud and more. Each ships with its own scope-of-work and methodology.
-- 📚 **Findings library** — a reusable, peer-reviewed catalogue so your wording stays consistent. Insert with one click and tailor per report.
-- 🧮 **Built-in CVSS calculator** — score findings inline (CVSS 3.0 / 3.1 / 4.0) with live vector + severity, plus a bulk 4.0 → 3.1 re-rate.
-- 🤖 **Scan auto-categorization** — import Nessus / Nmap / scan PDFs; VibeDocs categorizes, de-duplicates (CVE-aware) and groups findings for you.
-- 📝 **One-click Word & PDF** — generate a polished `.docx` (and PDF via LibreOffice) with screenshots embedded at a consistent width.
-- 📊 **Excel risk-register** — export a clean tracker (one row per finding) or import a client-maintained one to sync statuses.
-- 🔗 **Combined reports** — merge multiple test types (e.g. Web + API) into one document, each as its own chapter.
-- 🔁 **Retest workflow** — dated follow-up entries and per-finding status for a clear remediation trail.
-- 🔐 **Secure delivery** — package outputs into an AES-256 encrypted ZIP with reusable per-project passwords.
-- 👥 **Roles & review** — admin / senior / consultant / viewer, with a findings-approval and report-review workflow.
-- 🔑 **2FA (TOTP)** and an optional SSO scaffold.
+- **Projects & reports** — organise engagements by client, scope and testing window.
+- **Report templates** — Web, Infrastructure (VA & VAPT), API, Mobile, Thick Client, Cloud and more. Each ships with its own scope-of-work and methodology.
+- **Findings library** — a reusable, peer-reviewed catalogue so your wording stays consistent. Insert with one click and tailor per report.
+- **Built-in CVSS calculator** — score findings inline (CVSS 3.0 / 3.1 / 4.0) with live vector + severity, plus a bulk 4.0 → 3.1 re-rate.
+- **Scan auto-categorization** — import Nessus / Nmap / scan PDFs; VibeDocs categorizes, de-duplicates (CVE-aware) and groups findings for you.
+- **One-click Word & PDF** — generate a polished `.docx` (and PDF via LibreOffice) with screenshots embedded at a consistent width.
+- **Excel risk-register** — export a clean tracker (one row per finding) or import a client-maintained one to sync statuses.
+- **Combined reports** — merge multiple test types (e.g. Web + API) into one document, each as its own chapter.
+- **Retest workflow** — dated follow-up entries and per-finding status for a clear remediation trail.
+- **Secure delivery** — package outputs into an AES-256 encrypted ZIP with reusable per-project passwords.
+- **Roles & review** — admin / senior / consultant / viewer, with a findings-approval and report-review workflow.
+- **2FA (TOTP)** and an optional SSO scaffold.
 
 ---
 

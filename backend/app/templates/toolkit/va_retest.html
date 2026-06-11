@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+{% block title %}Retest tracker update — VibeDocs{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Retest tracker update</h1>
+    <p class="page-sub">
+      Drop the previous tracker + this quarter's rescan CSVs. Findings missing
+      from the rescan get marked <strong>Closed</strong>, still-open rows get
+      a version-remediation pass, and net-new IPs are surfaced for you to
+      decide on. Embedded screenshots in the tracker (client Screenshots
+      column etc.) survive the round-trip. <a href="/toolkit" class="link small">← back to toolkit</a>
+    </p>
+  </div>
+</div>
+
+<section class="card" style="margin-top:18px">
+  <div style="padding:18px">
+    <h3 style="margin:0 0 6px 0;font-size:14px">1 · Nessus rescan CSVs (required)</h3>
+    <p class="muted small" style="margin:0 0 10px">
+      The fresh scan from after the client remediated. Drop every
+      <code>.csv</code> export — the pipeline merges them.
+    </p>
+    <div id="vrt-dz-csv" class="vrt-dz" tabindex="0" role="button">
+      <div class="vrt-dz-inner">
+        <div class="vrt-dz-icon">📄</div>
+        <div class="vrt-dz-title">Drop rescan <code>.csv</code> files here</div>
+        <div class="vrt-dz-sub">multiple files supported · 200 MB each · 600 MB total</div>
+      </div>
+      <input type="file" id="vrt-input-csv" accept=".csv" multiple hidden>
+    </div>
+    <div id="vrt-list-csv" class="vrt-filelist" hidden></div>
+  </div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <div style="padding:18px">
+    <h3 style="margin:0 0 6px 0;font-size:14px">2 · Original tracker (required)</h3>
+    <p class="muted small" style="margin:0 0 10px">
+      The tracker from the original engagement — with whatever status /
+      comment / client-screenshot columns were already populated. We open it
+      with openpyxl, edit cells in-place, save back; embedded images stay
+      anchored to their cells throughout.
+    </p>
+    <div id="vrt-dz-tracker" class="vrt-dz vrt-dz-single" tabindex="0" role="button">
+      <div class="vrt-dz-inner">
+        <div class="vrt-dz-icon">📓</div>
+        <div class="vrt-dz-title">Drop original tracker</div>
+        <div class="vrt-dz-sub">.xlsx · single file</div>
+      </div>
+      <input type="file" id="vrt-input-tracker" accept=".xlsx,.xls" hidden>
+    </div>
+    <div id="vrt-list-tracker" class="vrt-filelist" hidden></div>
+    <label style="display:flex;flex-direction:column;gap:4px;max-width:260px;margin-top:14px">
+      <span class="small">Sheet index (0 = first sheet)</span>
+      <input id="vrt-sheet-index" type="number" min="0" step="1" value="0"
+             style="padding:8px 10px;border:1px solid var(--border);
+                    border-radius:6px;background:var(--surface);color:var(--text)">
+    </label>
+  </div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <div style="padding:18px">
+    <h3 style="margin:0 0 6px 0;font-size:14px">3 · Closure annotation</h3>
+
+    <label style="display:flex;flex-direction:column;gap:4px;max-width:420px">
+      <span class="small">Custom comments column name (optional)</span>
+      <input id="vrt-custom-col" type="text"
+             placeholder='e.g. "VibeDocs Comments"' maxlength="60">
+      <span class="muted small">
+        Created on the tracker if it doesn't already exist; reused if it does.
+        Leave blank to skip writing into a column.
+      </span>
+    </label>
+
+    <label id="vrt-default-wrap"
+           style="display:flex;flex-direction:column;gap:4px;max-width:620px;
+                  margin-top:14px;opacity:.55;transition:opacity .15s">
+      <span class="small">Default value for closed rows</span>
+      <textarea id="vrt-custom-default" rows="3" maxlength="800"
+                placeholder='e.g. "Closed in rescan dated 2026-05-15 — finding no longer present / installed version meets recommended fix."'
+                disabled></textarea>
+      <span class="muted small">
+        Written into the column above for every row this pass marks Closed.
+        Becomes editable once you've named a column.
+      </span>
+    </label>
+  </div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <div style="padding:18px">
+    <h3 style="margin:0 0 6px 0;font-size:14px">4 · Options</h3>
+
+    <label style="display:flex;flex-direction:column;gap:4px;max-width:560px;margin-bottom:14px">
+      <span class="small">IPs that appear in the rescan but NOT in the original tracker</span>
+      <select id="vrt-new-ip-action"
+              style="padding:8px 10px;border:1px solid var(--border);
+                     border-radius:6px;background:var(--surface);color:var(--text)">
+        <option value="include" selected>Append as new rows in the tracker (recommended)</option>
+        <option value="list_only">List separately in new_hosts.xlsx; don't touch tracker</option>
+        <option value="exclude">Ignore them entirely</option>
+      </select>
+      <span class="muted small">
+        Net-new IPs usually mean either an expanded scope or hosts added since
+        the engagement closed. Appending them as fresh rows is the safe
+        default; pick "Ignore" only if you've already accounted for them
+        elsewhere.
+      </span>
+    </label>
+
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input id="vrt-version-check" type="checkbox" checked>
+      <span>Run version-remediation check on still-open findings
+        <span class="muted small">(closes rows where the installed version in plugin_output ≥ the recommended fix)</span>
+      </span>
+    </label>
+  </div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <div style="padding:18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+    <p class="muted small" id="vrt-status" style="margin:0">Awaiting upload.</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn-secondary btn-sm" id="vrt-clear-btn" type="button">Clear all</button>
+      <button class="btn-primary btn-sm"   id="vrt-run-btn"   type="button">
+        ▶ Run retest · download ZIP
+      </button>
+    </div>
+  </div>
+
+  <div id="vrt-summary" class="vrt-summary" hidden>
+    <h3 style="margin:0 0 8px 0;font-size:14px">Last run</h3>
+    <div class="vrt-stat-grid">
+      <div class="vrt-stat"><div class="vrt-stat-v" id="vrt-s-closed-missing">0</div>
+        <div class="vrt-stat-l">Closed — no longer in rescan</div></div>
+      <div class="vrt-stat"><div class="vrt-stat-v" id="vrt-s-closed-version">0</div>
+        <div class="vrt-stat-l">Closed — version remediated</div></div>
+      <div class="vrt-stat"><div class="vrt-stat-v" id="vrt-s-still-open">0</div>
+        <div class="vrt-stat-l">Still open</div></div>
+      <div class="vrt-stat"><div class="vrt-stat-v" id="vrt-s-new-ips">0</div>
+        <div class="vrt-stat-l">Net-new IPs detected</div></div>
+      <div class="vrt-stat"><div class="vrt-stat-v" id="vrt-s-appended">0</div>
+        <div class="vrt-stat-l">New rows appended</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <header class="card-h"><h2 style="margin:0">What's in the ZIP</h2></header>
+  <div style="padding:0 18px 16px;line-height:1.55;font-size:13.5px">
+    <ul style="margin:8px 0 0;padding-left:20px">
+      <li><strong>updated_tracker.xlsx</strong> — your tracker, in-place edits
+        applied. <em>Embedded images (screenshots, badges, etc.) are
+        preserved.</em></li>
+      <li><strong>new_hosts.xlsx</strong> — every rescan row landing on a
+        net-new IP (only when the new-IP action is "include" or
+        "list_only").</li>
+      <li><strong>summary.txt</strong> — counts + the IPs the pipeline
+        flagged as net-new, including affected row counts per IP.</li>
+    </ul>
+    <p class="muted small" style="margin-top:10px">
+      Rows whose Status is already Closed (or a synonym like Remediated /
+      Fixed / Resolved) are left untouched — the script is safely re-runnable
+      against the same tracker without re-processing rows you've already
+      decided on.
+    </p>
+  </div>
+</section>
+
+<style>
+.vrt-dz {
+  border:2px dashed var(--border); border-radius:10px;
+  padding:22px 18px; text-align:center; cursor:pointer;
+  background:var(--surface-2);
+  transition:border-color .15s, background .15s;
+}
+.vrt-dz:hover, .vrt-dz:focus-visible {
+  border-color:var(--accent-dark); background:var(--accent-soft); outline:none;
+}
+.vrt-dz.is-dragover { border-color:var(--accent-dark); background:var(--accent-soft) }
+.vrt-dz-icon  { font-size:32px; line-height:1; margin-bottom:2px }
+.vrt-dz-title { font-weight:600; font-size:14px }
+.vrt-dz-sub   { color:var(--text-2); font-size:12.5px; margin-top:2px }
+.vrt-filelist { margin-top:12px; padding:6px 0; border-top:1px dashed var(--border) }
+.vrt-file-row { display:flex; gap:10px; align-items:center; padding:4px 0; font-size:13px }
+.vrt-file-row .vrt-file-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.vrt-file-row .vrt-file-size { color:var(--text-2); font-size:12px; min-width:70px; text-align:right }
+.vrt-file-row .vrt-file-x    { background:none; border:0; cursor:pointer; color:var(--err-fg); font-size:16px; padding:0 4px }
+.vrt-summary  { padding:0 18px 18px }
+.vrt-stat-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:10px }
+.vrt-stat     { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px }
+.vrt-stat-v   { font-size:22px; font-weight:700 }
+.vrt-stat-l   { color:var(--text-2); font-size:12px; margin-top:2px }
+#vrt-status.is-ok  { color:var(--ok-fg) }
+#vrt-status.is-err { color:var(--err-fg) }
+input#vrt-custom-col, textarea#vrt-custom-default {
+  padding:8px 10px; border:1px solid var(--border); border-radius:6px;
+  background:var(--surface); color:var(--text); font-size:13.5px;
+}
+</style>
+
+<script nonce="{{ request.state.csp_nonce }}">
+(function(){
+  const zones = [
+    {
+      multi: true,
+      dzId: "vrt-dz-csv", inputId: "vrt-input-csv", listId: "vrt-list-csv",
+      accept: [".csv"], staged: [],
+    },
+    {
+      multi: false,
+      dzId: "vrt-dz-tracker", inputId: "vrt-input-tracker", listId: "vrt-list-tracker",
+      accept: [".xlsx",".xls"], staged: [],
+    },
+  ];
+
+  function esc(s){return(s==null?"":String(s)).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+  function fmtSize(n){
+    if (n < 1024)        return `${n} B`;
+    if (n < 1024*1024)   return `${(n/1024).toFixed(1)} KB`;
+    return `${(n/1024/1024).toFixed(1)} MB`;
+  }
+  const statusEl = document.getElementById("vrt-status");
+  function setStatus(text, level){
+    statusEl.textContent = text;
+    statusEl.classList.remove("is-ok","is-err");
+    if (level === "ok")  statusEl.classList.add("is-ok");
+    if (level === "err") statusEl.classList.add("is-err");
+  }
+  function isAcceptable(zone, name){
+    const lower = (name || "").toLowerCase();
+    return zone.accept.some(ext => lower.endsWith(ext));
+  }
+  function renderZone(zone){
+    const list = document.getElementById(zone.listId);
+    list.innerHTML = "";
+    if (!zone.staged.length){ list.hidden = true; return; }
+    list.hidden = false;
+    for (let i = 0; i < zone.staged.length; i++){
+      const f = zone.staged[i];
+      const row = document.createElement("div");
+      row.className = "vrt-file-row";
+      row.innerHTML = `
+        <span class="vrt-file-name" title="${esc(f.name)}">📎 ${esc(f.name)}</span>
+        <span class="vrt-file-size">${fmtSize(f.size)}</span>
+        <button class="vrt-file-x" type="button" aria-label="Remove">×</button>
+      `;
+      row.querySelector(".vrt-file-x").addEventListener("click", () => {
+        zone.staged.splice(i, 1);
+        renderZone(zone);
+      });
+      list.appendChild(row);
+    }
+  }
+  function wireZone(zone){
+    const dz = document.getElementById(zone.dzId);
+    const input = document.getElementById(zone.inputId);
+    function stage(filelike){
+      const incoming = Array.from(filelike || []);
+      const accepted = incoming.filter(f => isAcceptable(zone, f.name));
+      if (incoming.length && !accepted.length){
+        setStatus(`${incoming[0].name}: wrong file type for this zone.`, "err");
+        return;
+      }
+      if (!zone.multi){
+        zone.staged = [accepted[accepted.length - 1]];
+      } else {
+        for (const f of accepted){
+          const exists = zone.staged.some(s => s.name === f.name && s.size === f.size);
+          if (!exists) zone.staged.push(f);
+        }
+      }
+      renderZone(zone);
+      setStatus("Files ready.");
+    }
+    ["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("is-dragover"); }));
+    ["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("is-dragover"); }));
+    dz.addEventListener("drop", e => stage(e.dataTransfer && e.dataTransfer.files));
+    dz.addEventListener("click", () => input.click());
+    dz.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); input.click(); } });
+    input.addEventListener("change", () => { stage(input.files); input.value = ""; });
+  }
+  zones.forEach(wireZone);
+
+  // ----- default-value enable/disable -----
+  const colInput     = document.getElementById("vrt-custom-col");
+  const defaultInput = document.getElementById("vrt-custom-default");
+  const defaultWrap  = document.getElementById("vrt-default-wrap");
+  function syncDefault(){
+    const on = !!(colInput.value || "").trim();
+    defaultInput.disabled = !on;
+    defaultWrap.style.opacity = on ? "1" : ".55";
+    if (!on) defaultInput.value = "";
+  }
+  colInput.addEventListener("input", syncDefault);
+  syncDefault();
+
+  // ----- clear / run -----
+  document.getElementById("vrt-clear-btn").addEventListener("click", () => {
+    for (const z of zones){ z.staged = []; renderZone(z); }
+    document.getElementById("vrt-custom-col").value = "";
+    document.getElementById("vrt-custom-default").value = "";
+    document.getElementById("vrt-new-ip-action").value = "include";
+    document.getElementById("vrt-version-check").checked = true;
+    document.getElementById("vrt-sheet-index").value = "0";
+    document.getElementById("vrt-summary").hidden = true;
+    syncDefault();
+    setStatus("Cleared.");
+  });
+
+  document.getElementById("vrt-run-btn").addEventListener("click", async () => {
+    const csvs    = zones[0].staged;
+    const tracker = zones[1].staged[0];
+    if (!csvs.length){
+      setStatus("Drop at least one rescan CSV in zone 1 first.", "err"); return;
+    }
+    if (!tracker){
+      setStatus("Drop the original tracker in zone 2 first.", "err"); return;
+    }
+    const fd = new FormData();
+    for (const f of csvs) fd.append("current_csvs", f, f.name);
+    fd.append("original_tracker", tracker, tracker.name);
+    fd.append("sheet_index", document.getElementById("vrt-sheet-index").value || "0");
+    fd.append("custom_comment_col",
+              document.getElementById("vrt-custom-col").value || "");
+    fd.append("custom_comment_default",
+              document.getElementById("vrt-custom-default").value || "");
+    fd.append("new_ip_action",
+              document.getElementById("vrt-new-ip-action").value || "include");
+    fd.append("enable_version_check",
+              document.getElementById("vrt-version-check").checked ? "true" : "false");
+
+    const runBtn = document.getElementById("vrt-run-btn");
+    runBtn.disabled = true;
+    setStatus("Running retest pass…");
+    try {
+      const r = await fetch("/api/toolkit/va-retest/run", {
+        method: "POST", credentials: "include", body: fd,
+      });
+      if (!r.ok){
+        let detail = r.statusText;
+        try { detail = (await r.json()).detail || detail; } catch(_){}
+        throw new Error(detail);
+      }
+      const stats = {
+        cm:  r.headers.get("x-closed-missing") || "0",
+        cv:  r.headers.get("x-closed-version") || "0",
+        op:  r.headers.get("x-still-open")     || "0",
+        nip: r.headers.get("x-new-ips")        || "0",
+        app: r.headers.get("x-rows-appended")  || "0",
+      };
+      const cd = r.headers.get("content-disposition") || "";
+      let suggested = "va_retest.zip";
+      const m = cd.match(/filename="([^"]+)"/);
+      if (m) suggested = m[1];
+
+      const blob = await r.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = suggested;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+
+      document.getElementById("vrt-s-closed-missing").textContent = stats.cm;
+      document.getElementById("vrt-s-closed-version").textContent = stats.cv;
+      document.getElementById("vrt-s-still-open").textContent     = stats.op;
+      document.getElementById("vrt-s-new-ips").textContent        = stats.nip;
+      document.getElementById("vrt-s-appended").textContent       = stats.app;
+      document.getElementById("vrt-summary").hidden = false;
+      setStatus(`Retest complete · ${stats.cm} closed (missing) · ${stats.cv} closed (version) · ${stats.op} still open · ZIP downloaded.`, "ok");
+    } catch (err){
+      setStatus("Run failed: " + (err.message || err), "err");
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

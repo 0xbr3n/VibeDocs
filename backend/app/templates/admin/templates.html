@@ -1,0 +1,25 @@
+{# Legacy admin-only standalone Templates page. Functionally
+   identical to the admin section of `/templates` — it's kept around
+   so any URL-pasted / bookmarked `/admin/templates` link still works.
+   Both pages share `_admin_templates_block.html` so changes flow
+   through automatically. The route in `ui.py` is admin-gated, so
+   non-admins land at /login when they try to deep-link here. #}
+{% extends "base.html" %}
+{% block title %}Admin — Templates{% endblock %}
+{% block body_class %}is-wide{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Templates · Admin</h1>
+    <p class="page-sub">
+      System-wide report and email templates. Changes here affect every
+      consultant — make them carefully.
+    </p>
+  </div>
+  <div class="actions">
+    <a href="/templates" class="btn-secondary">← Back to all templates</a>
+  </div>
+</div>
+
+{% include "admin/_admin_templates_block.html" %}
+{% endblock %}

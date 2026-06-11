@@ -1,0 +1,452 @@
+{% extends "base.html" %}
+{% block title %}Reviews — VibeDocs{% endblock %}
+{% block content %}
+{# Total-pending count drives the badge in the page header. The
+   templates / findings sections only render for admins, so we exclude
+   their counts when the viewer is a plain consultant. #}
+{% set report_assigned_count = assigned_reports|length %}
+{% set report_all_count      = all_in_review_reports|length %}
+{% set tpl_count             = pending_templates|length if is_admin else 0 %}
+{% set fnd_count             = pending_findings|length  if is_admin else 0 %}
+{% set total_pending = report_assigned_count + tpl_count + fnd_count %}
+
+<div class="page-header">
+  <div>
+    <h1>Reviews</h1>
+    <p class="page-sub">
+      {% if is_admin %}
+        Approve or reject reports assigned to you, plus the team's pending
+        custom templates and findings.
+      {% else %}
+        Reports your colleagues have asked you to sign off on. Pick a row to
+        approve or reject — approved reports can be re-generated without the
+        DRAFT watermark.
+      {% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    <span class="badge badge-warning" id="reviews-total-pill">
+      {{ total_pending }} pending
+    </span>
+  </div>
+</div>
+
+{# ============================================================
+   Section 1 — Reports awaiting MY review.
+   Always visible, regardless of role. This is the whole reason a
+   plain consultant needs access to the page.
+   ============================================================ #}
+<section class="card" style="margin-top:20px">
+  <header class="card-h">
+    <h2>Reports awaiting your review
+      <span class="muted small">({{ report_assigned_count }})</span>
+    </h2>
+  </header>
+  <div style="padding:0">
+    {% if assigned_reports %}
+    <table class="data" style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th>Report</th>
+          <th>Version</th>
+          <th>Submitted by</th>
+          <th>Submitted</th>
+          <th>Notes</th>
+          <th style="text-align:right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in assigned_reports %}
+        <tr data-version-id="{{ r.version_id }}">
+          <td>
+            <strong>{{ r.report_name }}</strong>
+          </td>
+          <td><code class="small">v{{ r.version }}</code></td>
+          <td>{{ r.submitter_username or '—' }}</td>
+          <td class="muted small">
+            {% if r.submitted_at %}{{ r.submitted_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+          </td>
+          <td class="muted small" style="max-width:280px">
+            {% if r.review_notes %}
+              <span title="{{ r.review_notes }}">{{ r.review_notes[:120] }}{% if r.review_notes|length > 120 %}…{% endif %}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td style="text-align:right;white-space:nowrap">
+            <a class="btn-secondary btn-sm"
+               href="/reports/versions/{{ r.version_id }}/edit"
+               title="Open the report version">Open</a>
+            <button class="btn-primary btn-sm"
+                    data-action="report-approve"
+                    data-vid="{{ r.version_id }}"
+                    title="Mark as approved — next Generate will skip the DRAFT watermark">
+              Approve
+            </button>
+            <button class="btn-danger btn-sm"
+                    data-action="report-reject"
+                    data-vid="{{ r.version_id }}">Reject</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted small" style="padding:18px 20px;text-align:center;margin:0">
+      No reports waiting on you right now. When a colleague picks you as a
+      reviewer their report will land here.
+    </p>
+    {% endif %}
+  </div>
+</section>
+
+{# ============================================================
+   Section 2 — All reports currently in review (admin/senior only).
+   Lets the team lead see who's reviewing what and cover for absent
+   reviewers. Hidden for plain consultants — they only see their own
+   queue above.
+   ============================================================ #}
+{% if is_admin_or_senior %}
+<section class="card" style="margin-top:20px">
+  <header class="card-h">
+    <h2>All reports in review
+      <span class="muted small">({{ report_all_count }})</span>
+    </h2>
+    <span class="muted small">Org-wide view · admin / senior</span>
+  </header>
+  <div style="padding:0">
+    {% if all_in_review_reports %}
+    <table class="data" style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th>Report</th>
+          <th>Version</th>
+          <th>Submitted by</th>
+          <th>Reviewer</th>
+          <th>Submitted</th>
+          <th style="text-align:right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in all_in_review_reports %}
+        <tr data-version-id="{{ r.version_id }}">
+          <td><strong>{{ r.report_name }}</strong></td>
+          <td><code class="small">v{{ r.version }}</code></td>
+          <td>{{ r.submitter_username or '—' }}</td>
+          <td>{{ r.reviewer_username or '—' }}</td>
+          <td class="muted small">
+            {% if r.submitted_at %}{{ r.submitted_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+          </td>
+          <td style="text-align:right;white-space:nowrap">
+            <a class="btn-secondary btn-sm"
+               href="/reports/versions/{{ r.version_id }}/edit">Open</a>
+            <button class="btn-primary btn-sm"
+                    data-action="report-approve"
+                    data-vid="{{ r.version_id }}"
+                    title="Approve on behalf of the assigned reviewer (audited)">
+              Approve
+            </button>
+            <button class="btn-danger btn-sm"
+                    data-action="report-reject"
+                    data-vid="{{ r.version_id }}">Reject</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted small" style="padding:18px 20px;text-align:center;margin:0">
+      Nothing in the org-wide queue right now.
+    </p>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{# ============================================================
+   Section 3 — Pending custom report templates (admin-only).
+   ============================================================ #}
+{% if is_admin %}
+<section class="card" style="margin-top:20px">
+  <header class="card-h">
+    <h2>Custom report templates <span class="muted small">({{ pending_templates|length }})</span></h2>
+    <a href="/templates" class="link small">All templates →</a>
+  </header>
+  <div style="padding:0">
+    {% if pending_templates %}
+    <table class="data" style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th>Template</th>
+          <th>Type</th>
+          <th>Submitted by</th>
+          <th>Submitted</th>
+          <th style="text-align:right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in pending_templates %}
+        <tr data-template-id="{{ t.id }}">
+          <td>
+            <strong>{{ t.name }}</strong>
+            {% if t.description %}<br><span class="small muted">{{ t.description }}</span>{% endif %}
+          </td>
+          <td><code class="small">{{ t.template_type }}</code></td>
+          <td>
+            {% if t.uploaded_by %}
+              {{ t.uploaded_by.full_name or t.uploaded_by.username }}
+              <br><span class="small muted">{{ t.uploaded_by.role.value }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="muted small">
+            {% if t.updated_at %}{{ t.updated_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+          </td>
+          <td style="text-align:right">
+            <a class="btn-secondary btn-sm"
+               href="/templates/edit/{{ t.id }}"
+               title="Inspect the placeholders before deciding">View</a>
+            <button class="btn-primary btn-sm"
+                    data-action="template-approve"
+                    data-id="{{ t.id }}">Approve</button>
+            <button class="btn-danger btn-sm"
+                    data-action="template-reject"
+                    data-id="{{ t.id }}">Reject</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted small" style="padding:18px 20px;text-align:center;margin:0">
+      No templates awaiting review.
+    </p>
+    {% endif %}
+  </div>
+</section>
+
+{# ============================================================
+   Section 4 — Pending findings library entries (admin-only).
+   ============================================================ #}
+<section class="card" style="margin-top:20px">
+  <header class="card-h">
+    <h2>Findings library <span class="muted small">({{ pending_findings|length }})</span></h2>
+    <a href="/library" class="link small">All findings →</a>
+  </header>
+  <div style="padding:0">
+    {% if pending_findings %}
+    <table class="data" style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Severity</th>
+          <th>Submitted by</th>
+          <th>Submitted</th>
+          <th style="text-align:right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in pending_findings %}
+        <tr data-finding-id="{{ f.id }}">
+          <td>
+            <strong>{{ f.title }}</strong>
+            {% if f.cwe or f.owasp_category %}
+            <br>
+            <span class="small muted">
+              {{ f.cwe or '' }}{% if f.cwe and f.owasp_category %} · {% endif %}{{ f.owasp_category or '' }}
+            </span>
+            {% endif %}
+          </td>
+          <td>
+            {% set sev = (f.default_severity.value if f.default_severity else '')|lower %}
+            <span class="sev-badge sev-{{ 'info' if sev in ('info','informational') else sev }}">
+              {{ f.default_severity.value if f.default_severity else '—' }}
+            </span>
+          </td>
+          <td>
+            {% if f.created_by %}
+              {{ f.created_by.full_name or f.created_by.username }}
+              <br><span class="small muted">{{ f.created_by.role.value }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="muted small">
+            {% if f.updated_at %}{{ f.updated_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+          </td>
+          <td style="text-align:right">
+            <a class="btn-secondary btn-sm"
+               href="/library?focus={{ f.id }}"
+               title="Open in the findings library">View</a>
+            <button class="btn-primary btn-sm"
+                    data-action="finding-approve"
+                    data-id="{{ f.id }}">Approve</button>
+            <button class="btn-danger btn-sm"
+                    data-action="finding-reject"
+                    data-id="{{ f.id }}">Reject</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted small" style="padding:18px 20px;text-align:center;margin:0">
+      No findings awaiting review.
+    </p>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+<script nonce="{{ request.state.csp_nonce }}">
+(function(){
+  // Inline approve / reject for every queue on the page. Each handler
+  // hits the right per-resource endpoint and either removes the row
+  // on success (so the count + bell stay in sync without a page
+  // reload) or surfaces the server's error message inline.
+  const totalPill = document.getElementById('reviews-total-pill');
+
+  function updateTotalPill(delta){
+    if (!totalPill) return;
+    const m = (totalPill.textContent || '').match(/(\d+)/);
+    const cur = m ? parseInt(m[1], 10) : 0;
+    const next = Math.max(0, cur + delta);
+    totalPill.textContent = `${next} pending`;
+    if (next === 0){
+      totalPill.classList.remove('badge-warning');
+      totalPill.classList.add('badge-success');
+      totalPill.textContent = 'All caught up';
+    }
+  }
+
+  function removeRow(tr){
+    const tbody = tr.parentNode;
+    tr.style.transition = 'opacity .15s ease';
+    tr.style.opacity = '0';
+    setTimeout(() => {
+      tr.remove();
+      // If the table is now empty, replace with the "nothing pending" message.
+      if (tbody && !tbody.querySelector('tr')){
+        const tableCard = tbody.closest('.card');
+        if (tableCard){
+          const tableEl = tableCard.querySelector('table');
+          if (tableEl) tableEl.remove();
+          const msg = document.createElement('p');
+          msg.className = 'muted small';
+          msg.style.cssText = 'padding:18px 20px;text-align:center;margin:0';
+          msg.textContent = 'Nothing here right now.';
+          tableCard.appendChild(msg);
+        }
+      }
+    }, 160);
+  }
+
+  async function postFormAction(url, formBody){
+    return fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: formBody instanceof FormData
+                 ? {}  // browser sets multipart boundary
+                 : {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: formBody,
+    });
+  }
+
+  async function postJson(url, payload){
+    return fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload || {}),
+    });
+  }
+
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest && e.target.closest('button[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const id     = btn.dataset.id;
+    const vid    = btn.dataset.vid;
+
+    const tr  = btn.closest('tr');
+    const buttons = tr ? tr.querySelectorAll('button[data-action]') : [];
+    buttons.forEach(b => b.disabled = true);
+
+    try {
+      let r;
+      if (action === 'report-approve' && vid){
+        // Reviewer sign-off. We send `publish=false` so the version
+        // lands at "approved" rather than "published" — that's what
+        // the consultant team wanted (approved already suppresses the
+        // DRAFT watermark on next Generate). They can still bump to
+        // "published" from the version page if they want it locked.
+        r = await postJson(`/api/reports/versions/${vid}/review-decision`, {
+          decision: 'approve',
+          publish: false,
+        });
+      } else if (action === 'report-reject' && vid){
+        const notes = prompt('Optional rejection notes (shown to the submitter):') || '';
+        r = await postJson(`/api/reports/versions/${vid}/review-decision`, {
+          decision: 'reject',
+          notes: notes || null,
+        });
+      } else if ((action === 'template-approve' || action === 'template-reject') && id){
+        const fd = new FormData();
+        fd.append('action', action === 'template-approve' ? 'approve' : 'reject');
+        const notes = (action === 'template-reject')
+          ? (prompt('Optional rejection notes (shown to the uploader):') || '')
+          : '';
+        if (notes) fd.append('notes', notes);
+        r = await postFormAction(`/api/templates/custom/${id}/review`, fd);
+      } else if (action === 'finding-approve' && id){
+        r = await fetch(`/api/findings-library/${id}/approve`,
+                        {method:'POST', credentials:'include'});
+      } else if (action === 'finding-reject' && id){
+        const notes = prompt('Optional rejection notes (shown to the submitter):') || '';
+        const qs = notes ? `?notes=${encodeURIComponent(notes)}` : '';
+        r = await fetch(`/api/findings-library/${id}/reject${qs}`,
+                        {method:'POST', credentials:'include'});
+      } else {
+        return;
+      }
+
+      if (!r.ok){
+        // The review-decision endpoint returns STRUCTURED detail when
+        // the placeholder gate fires —
+        //   { detail: {
+        //       error: "unresolved_placeholders",
+        //       message: "Cannot approve — N finding(s) still ...",
+        //       blocker_titles: ["...", "..."],
+        //       findings: [...]
+        //   } }
+        // The old code did `'Failed: ' + detail` which stringified
+        // the dict as "[object Object]" — useless for the reviewer.
+        // Unpack the friendly bits (`message` + `blocker_titles`)
+        // when detail is an object; keep the simple string path for
+        // plain-string errors.
+        let detail = r.statusText;
+        try { detail = (await r.json()).detail || detail; } catch(_){}
+        let msg;
+        if (detail && typeof detail === 'object'){
+          msg = detail.message || JSON.stringify(detail);
+          if (Array.isArray(detail.blocker_titles) && detail.blocker_titles.length){
+            const list = detail.blocker_titles.slice(0, 8).map(t => '  • ' + t).join('\n');
+            msg += '\n\nBlocking findings:\n' + list;
+            if (detail.blocker_titles.length > 8){
+              msg += `\n  …and ${detail.blocker_titles.length - 8} more.`;
+            }
+          }
+        } else {
+          msg = String(detail || r.statusText);
+        }
+        alert('Failed: ' + msg);
+        buttons.forEach(b => b.disabled = false);
+        return;
+      }
+      if (tr){
+        removeRow(tr);
+        updateTotalPill(-1);
+      }
+    } catch (err){
+      alert('Failed: ' + (err.message || err));
+      buttons.forEach(b => b.disabled = false);
+    }
+  });
+})();
+</script>
+{% endblock %}

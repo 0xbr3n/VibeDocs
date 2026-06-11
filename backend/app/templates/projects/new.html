@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}New project{% endblock %}
+{% block content %}
+<div class="page-header"><h1>New project</h1></div>
+<form id="new-project-form" class="card form-vertical">
+  <label>
+    Project name
+    <input name="name" required placeholder="e.g. Acme Corp Q2 2026 Pentest">
+  </label>
+  <label>
+    Client name
+    <input name="client_name" required placeholder="Acme Corp">
+  </label>
+  <label>
+    Sector
+    <select name="sector">
+      <option value="">-- Select --</option>
+      <option>Government</option>
+      <option>System Integrator</option>
+      <option>Critical Information Infrastructure (CII)</option>
+      <option>Commercial</option>
+      <option>Financial Services</option>
+      <option>Healthcare</option>
+      <option>Other</option>
+    </select>
+  </label>
+
+  <!-- Client point-of-contact. Optional at create time so a project can
+       be spun up before the engagement letter lands. Stored under
+       project.details.client_poc {name, email} to avoid a schema change. -->
+  <fieldset style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:0">
+    <legend class="small muted" style="padding:0 6px">Client point of contact (optional)</legend>
+    <div class="form-row">
+      <label>
+        POC name
+        <input name="client_poc_name" placeholder="Jane Doe">
+      </label>
+      <label>
+        POC email
+        <input name="client_poc_email" type="email" placeholder="jane.doe@client.com">
+      </label>
+    </div>
+  </fieldset>
+
+  <label>
+    Company / Entity name
+    <select name="company_alias" id="company-alias-select">
+      <option value="">Loading…</option>
+    </select>
+    <small class="muted">Appears in page footer, Confidentiality Statement, Executive Summary, and Introduction.</small>
+  </label>
+
+  <!-- Free-form project remarks. Use for engagement composition (e.g.
+       "5 SCR + 2 web VAPT"), client quirks, handover notes from a
+       previous consultant. Stored under project.details.remarks. -->
+  <label>
+    Project remarks / comments
+    <textarea name="remarks" rows="3"
+              placeholder="e.g. 5 SCR + 2 Web VAPT. Client prefers updates on Mondays. Past consultant noted scope creep around the admin portal."></textarea>
+    <small class="muted">Visible to anyone with access to this project.</small>
+  </label>
+
+  <div class="form-row">
+    <label>
+      Estimated start date
+      <input type="date" name="testing_start">
+    </label>
+    <label>
+      Estimated end date
+      <input type="date" name="testing_end">
+    </label>
+  </div>
+  <small class="muted" style="margin-top:-4px">
+    Estimates — actual testing windows are set when reports are created and run.
+  </small>
+
+  <div class="actions">
+    <button type="submit" class="btn-primary">Create project</button>
+    <a href="/projects" class="btn-secondary">Cancel</a>
+  </div>
+  <p id="form-err" class="error" hidden></p>
+</form>
+<script nonce="{{ request.state.csp_nonce }}">
+// Populate company alias dropdown from admin-managed list
+(async () => {
+  const sel = document.getElementById('company-alias-select');
+  try {
+    const r = await fetch('/api/admin/panel/company-aliases', {credentials: 'include'});
+    if (r.ok) {
+      const data = await r.json();
+      sel.innerHTML = '<option value="">-- Select --</option>' +
+        data.aliases.map(a => `<option value="${a.replace(/"/g,'&quot;')}">${a}</option>`).join('');
+    } else {
+      sel.innerHTML = '<option value="">-- Unable to load --</option>';
+    }
+  } catch {
+    sel.innerHTML = '<option value="">-- Unable to load --</option>';
+  }
+})();
+// Notes on what's deliberately NOT here any more:
+//   • Report Template picker: a project hosts many report types (Web
+//     VAPT, Thick Client, Infra, IoT, …). The template choice belongs
+//     on the New Report screen — gated by the report itself, not the
+//     parent engagement.
+//   • Scope targets textarea: scope is technical engagement data and
+//     belongs to a specific report (Infra/IoT use the Nessus / Excel
+//     tracker importer on the New Report screen). At project-creation
+//     time there's no technical scope to capture yet.
+//   • Mobile-platform checkboxes / Infra import preview: same reason —
+//     they reacted to the now-removed template picker.
+document.getElementById("new-project-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+
+  const poc_name      = (fd.get("client_poc_name")  || "").toString().trim();
+  const poc_email     = (fd.get("client_poc_email") || "").toString().trim();
+  const remarks       = (fd.get("remarks")          || "").toString().trim();
+  const company_alias = (fd.get("company_alias")    || "").toString().trim();
+
+  // We persist POC, remarks, and company_alias under project.details so we
+  // don't need a schema migration for the new fields.
+  const details = {};
+  if (poc_name || poc_email){
+    details.client_poc = {
+      name:  poc_name  || null,
+      email: poc_email || null,
+    };
+  }
+  if (remarks) details.remarks = remarks;
+  if (company_alias) details.company_alias = company_alias;
+
+  const payload = {
+    name: fd.get("name"),
+    client_name: fd.get("client_name"),
+    sector: fd.get("sector") || null,
+    scope_description: null,
+    scope_targets: [],            // populated later from report-level import
+    testing_start: fd.get("testing_start") ? new Date(fd.get("testing_start")).toISOString() : null,
+    testing_end:   fd.get("testing_end")   ? new Date(fd.get("testing_end")).toISOString()   : null,
+    details: details,
+  };
+  const r = await fetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    credentials: "include",
+  });
+  const errEl = document.getElementById("form-err");
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    errEl.textContent = "Error: " + (data.detail || r.status);
+    errEl.hidden = false;
+    return;
+  }
+  const project = await r.json();
+  window.location = "/projects/" + project.id;
+});
+</script>
+{% endblock %}

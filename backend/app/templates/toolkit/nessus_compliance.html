@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+{% block title %}Nessus Compliance → Excel — VibeDocs{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Nessus Compliance → Excel</h1>
+    <p class="page-sub">
+      Drop one or more <code>.nessus</code> CIS Host Configuration Review
+      scans below. We extract every Policy Compliance check, detect the
+      benchmark level (L1 / L2) and profile, and stream back a styled
+      Excel workbook — Summary, All Compliance, Host Summary, and one
+      sheet per policy. <a href="/toolkit" class="link small">← back to toolkit</a>
+    </p>
+  </div>
+</div>
+
+<section class="card" style="margin-top:18px">
+  <div style="padding:18px 18px 4px">
+    <div id="ncx-dropzone" class="ncx-dropzone" tabindex="0"
+         role="button" aria-label="Drop .nessus files here">
+      <div class="ncx-dz-inner">
+        <div class="ncx-dz-icon">📥</div>
+        <div class="ncx-dz-title">Drop <code>.nessus</code> / <code>.xml</code> files here</div>
+        <div class="ncx-dz-sub">or click to browse — up to 25 files, 50 MB each</div>
+        <input type="file" id="ncx-file-input"
+               accept=".nessus,.xml,application/xml,text/xml"
+               multiple hidden>
+        <button type="button" class="btn-secondary btn-sm" id="ncx-pick-btn"
+                style="margin-top:10px">Choose files</button>
+      </div>
+    </div>
+
+    <div id="ncx-filelist" class="ncx-filelist" hidden></div>
+
+    <div class="ncx-actions" id="ncx-actions" hidden>
+      <button class="btn-secondary btn-sm" id="ncx-clear-btn">Clear</button>
+      <button class="btn-secondary btn-sm" id="ncx-preview-btn">Preview parse</button>
+      <button class="btn-primary btn-sm"   id="ncx-convert-btn">
+        ⤓ Build Excel workbook
+      </button>
+    </div>
+
+    <p class="muted small" id="ncx-status" style="margin:14px 0 0">Awaiting upload.</p>
+  </div>
+
+  <div id="ncx-summary" class="ncx-summary" hidden>
+    <h3 style="margin:0 0 8px 0;font-size:14px">Parse preview</h3>
+    <div class="ncx-summary-grid">
+      <div class="ncx-stat"><div class="ncx-stat-v" id="ncx-stat-rows">0</div>
+        <div class="ncx-stat-l">Compliance rows</div></div>
+      <div class="ncx-stat"><div class="ncx-stat-v" id="ncx-stat-hosts">0</div>
+        <div class="ncx-stat-l">Unique hosts</div></div>
+      <div class="ncx-stat"><div class="ncx-stat-v" id="ncx-stat-policies">0</div>
+        <div class="ncx-stat-l">Unique policies</div></div>
+    </div>
+    <div class="ncx-summary-row" style="margin-top:10px">
+      <strong>Results:</strong>
+      <span id="ncx-results-list" class="muted small">—</span>
+    </div>
+    <div class="ncx-summary-row" style="margin-top:4px">
+      <strong>Benchmark levels:</strong>
+      <span id="ncx-levels-list" class="muted small">—</span>
+    </div>
+    <div class="ncx-summary-row" style="margin-top:4px">
+      <strong>Top hosts:</strong>
+      <span id="ncx-top-hosts" class="muted small">—</span>
+    </div>
+  </div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <header class="card-h"><h2 style="margin:0">What's in the workbook</h2></header>
+  <div style="padding:0 18px 16px;line-height:1.55;font-size:13.5px">
+    <ul style="margin:8px 0 0;padding-left:20px">
+      <li><strong>Summary</strong> — total rows, unique hosts / policies, result
+        breakdown (FAILED / PASSED / WARNING / …), benchmark-level breakdown.</li>
+      <li><strong>All Compliance</strong> — every parsed row with full detail:
+        host, IP, FQDN, OS, policy, plugin ID, benchmark level + profile,
+        policy setting, requirement description, solution, result,
+        actual / policy values, severity, service / port / protocol, see-also,
+        synopsis, description.</li>
+      <li><strong>Host Summary</strong> — one row per host with result counts.</li>
+      <li><strong>One sheet per policy</strong> — easy to hand a specific
+        benchmark sheet to a system owner.</li>
+    </ul>
+    <p class="muted small" style="margin-top:10px">
+      Cells whose value starts with <code>=</code> are prefixed with a
+      single quote so Excel doesn't treat them as formulas. Output
+      otherwise matches the standalone
+      <code>nessus_compliance_to_excel.py</code> CLI byte-for-byte.
+    </p>
+  </div>
+</section>
+
+<style>
+.ncx-dropzone {
+  border:2px dashed var(--border);
+  border-radius:10px;
+  padding:30px 20px;
+  text-align:center;
+  cursor:pointer;
+  transition:border-color .15s, background .15s, transform .12s;
+  background:var(--surface-2);
+}
+.ncx-dropzone:hover, .ncx-dropzone:focus-visible {
+  border-color:var(--accent-dark);
+  background:var(--accent-soft);
+  outline:none;
+}
+.ncx-dropzone.is-dragover {
+  border-color:var(--accent-dark);
+  background:var(--accent-soft);
+  transform:scale(1.005);
+}
+.ncx-dz-icon  { font-size:42px; line-height:1; margin-bottom:4px }
+.ncx-dz-title { font-weight:600; font-size:15px }
+.ncx-dz-sub   { color:var(--text-2); font-size:13px; margin-top:2px }
+.ncx-filelist {
+  margin-top:16px; padding:8px 0; border-top:1px dashed var(--border);
+}
+.ncx-file-row {
+  display:flex; gap:10px; align-items:center; padding:5px 0;
+  font-size:13px;
+}
+.ncx-file-row .ncx-file-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.ncx-file-row .ncx-file-size { color:var(--text-2); font-size:12px; min-width:70px; text-align:right }
+.ncx-file-row .ncx-file-x    {
+  background:none; border:0; cursor:pointer; color:var(--err-fg);
+  font-size:16px; padding:0 4px;
+}
+.ncx-actions   { display:flex; gap:8px; margin-top:14px; justify-content:flex-end }
+.ncx-summary   { padding:0 18px 18px }
+.ncx-summary-grid {
+  display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
+}
+.ncx-stat {
+  background:var(--surface-2); border:1px solid var(--border);
+  border-radius:8px; padding:10px 12px;
+}
+.ncx-stat-v { font-size:22px; font-weight:700 }
+.ncx-stat-l { color:var(--text-2); font-size:12px; margin-top:2px }
+.ncx-summary-row { font-size:13px }
+</style>
+
+<script nonce="{{ request.state.csp_nonce }}">
+(function(){
+  // ----- DOM refs -----
+  const dropzone = document.getElementById("ncx-dropzone");
+  const fileInput = document.getElementById("ncx-file-input");
+  const pickBtn   = document.getElementById("ncx-pick-btn");
+  const filelist  = document.getElementById("ncx-filelist");
+  const actions   = document.getElementById("ncx-actions");
+  const clearBtn  = document.getElementById("ncx-clear-btn");
+  const previewBtn= document.getElementById("ncx-preview-btn");
+  const convertBtn= document.getElementById("ncx-convert-btn");
+  const statusEl  = document.getElementById("ncx-status");
+  const summaryEl = document.getElementById("ncx-summary");
+
+  // Files staged for the next request. We keep our own array rather
+  // than relying on input.files because the user can drag in
+  // additional files after picking some — we want to APPEND to the
+  // staged set, but a fresh fileInput.files always overwrites the
+  // browser's idea of "current selection".
+  let staged = [];
+
+  function esc(s){return(s==null?"":String(s)).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+  function fmtSize(n){
+    if (n < 1024)        return `${n} B`;
+    if (n < 1024*1024)   return `${(n/1024).toFixed(1)} KB`;
+    return `${(n/1024/1024).toFixed(1)} MB`;
+  }
+
+  function setStatus(text, level){
+    statusEl.textContent = text;
+    statusEl.classList.remove("is-ok", "is-err");
+    if (level === "ok")  statusEl.classList.add("is-ok");
+    if (level === "err") statusEl.classList.add("is-err");
+  }
+
+  function renderList(){
+    filelist.innerHTML = "";
+    if (!staged.length){
+      filelist.hidden = true;
+      actions.hidden = true;
+      summaryEl.hidden = true;
+      setStatus("Awaiting upload.");
+      return;
+    }
+    filelist.hidden = false;
+    actions.hidden = false;
+    for (let i = 0; i < staged.length; i++){
+      const f = staged[i];
+      const row = document.createElement("div");
+      row.className = "ncx-file-row";
+      row.innerHTML = `
+        <span class="ncx-file-name" title="${esc(f.name)}">📄 ${esc(f.name)}</span>
+        <span class="ncx-file-size">${fmtSize(f.size)}</span>
+        <button class="ncx-file-x" type="button" aria-label="Remove" title="Remove">×</button>
+      `;
+      row.querySelector(".ncx-file-x").addEventListener("click", () => {
+        staged.splice(i, 1);
+        renderList();
+      });
+      filelist.appendChild(row);
+    }
+    setStatus(`${staged.length} file${staged.length === 1 ? '' : 's'} ready.`);
+  }
+
+  function stageFiles(filelike){
+    const incoming = Array.from(filelike || []);
+    const accepted = incoming.filter(f => {
+      const lower = (f.name || "").toLowerCase();
+      return lower.endsWith(".nessus") || lower.endsWith(".xml");
+    });
+    if (incoming.length && !accepted.length){
+      setStatus("Only .nessus / .xml files are accepted.", "err");
+      return;
+    }
+    // Dedupe by name+size — re-dropping the same file shouldn't double it.
+    for (const f of accepted){
+      const exists = staged.some(s => s.name === f.name && s.size === f.size);
+      if (!exists) staged.push(f);
+    }
+    if (staged.length > 25){
+      staged = staged.slice(0, 25);
+      setStatus("Capped at 25 files per request. Extras dropped.", "err");
+    }
+    renderList();
+  }
+
+  // ----- drag-and-drop wiring -----
+  ["dragenter", "dragover"].forEach(ev => {
+    dropzone.addEventListener(ev, e => {
+      e.preventDefault();
+      dropzone.classList.add("is-dragover");
+    });
+  });
+  ["dragleave", "drop"].forEach(ev => {
+    dropzone.addEventListener(ev, e => {
+      e.preventDefault();
+      dropzone.classList.remove("is-dragover");
+    });
+  });
+  dropzone.addEventListener("drop", e => {
+    stageFiles(e.dataTransfer && e.dataTransfer.files);
+  });
+
+  // Click anywhere on the dropzone (incl. the "Choose files" button)
+  // to open the file picker. The button has its own click handler so
+  // we stop propagation on it to avoid a double-pop.
+  dropzone.addEventListener("click", () => fileInput.click());
+  pickBtn.addEventListener("click", e => { e.stopPropagation(); fileInput.click(); });
+  // Enter/Space activates the dropzone too — keeps it keyboard-friendly.
+  dropzone.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " "){ e.preventDefault(); fileInput.click(); }
+  });
+
+  fileInput.addEventListener("change", () => {
+    stageFiles(fileInput.files);
+    fileInput.value = "";   // reset so picking the same file again still fires
+  });
+
+  clearBtn.addEventListener("click", () => {
+    staged = [];
+    renderList();
+  });
+
+  // ----- preview / convert -----
+  function buildFormData(){
+    const fd = new FormData();
+    for (const f of staged) fd.append("files", f, f.name);
+    return fd;
+  }
+
+  function setBusy(busy){
+    [previewBtn, convertBtn, clearBtn].forEach(b => b.disabled = busy);
+    dropzone.style.pointerEvents = busy ? "none" : "";
+    dropzone.style.opacity       = busy ? "0.6" : "";
+  }
+
+  function renderSummary(s){
+    document.getElementById("ncx-stat-rows").textContent     = s.total_rows;
+    document.getElementById("ncx-stat-hosts").textContent    = s.unique_hosts;
+    document.getElementById("ncx-stat-policies").textContent = s.unique_policies;
+
+    const order = ["FAILED", "PASSED", "WARNING", "ERROR", "INFO", "UNKNOWN"];
+    const results = Object.entries(s.results || {})
+      .sort((a, b) => (order.indexOf(a[0]) + 99) - (order.indexOf(b[0]) + 99))
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(" · ") || "—";
+    document.getElementById("ncx-results-list").textContent = results;
+
+    const levels = Object.entries(s.levels || {})
+      .map(([k, v]) => `${k}: ${v}`).join(" · ") || "—";
+    document.getElementById("ncx-levels-list").textContent = levels;
+
+    const top = (s.top_hosts || []).map(([h, n]) => `${h} (${n})`).join(", ") || "—";
+    document.getElementById("ncx-top-hosts").textContent = top;
+
+    summaryEl.hidden = false;
+  }
+
+  previewBtn.addEventListener("click", async () => {
+    if (!staged.length) return;
+    setBusy(true);
+    setStatus("Parsing…");
+    try {
+      const r = await fetch("/api/toolkit/nessus-compliance/preview", {
+        method: "POST", credentials: "include", body: buildFormData(),
+      });
+      if (!r.ok){
+        const detail = await r.json().catch(() => ({}));
+        throw new Error(detail.detail || r.statusText);
+      }
+      const s = await r.json();
+      renderSummary(s);
+      setStatus(`Parsed ${s.total_rows} compliance rows across ${s.unique_hosts} hosts.`, "ok");
+    } catch (err){
+      setStatus("Preview failed: " + (err.message || err), "err");
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  convertBtn.addEventListener("click", async () => {
+    if (!staged.length) return;
+    setBusy(true);
+    setStatus("Building workbook…");
+    try {
+      const r = await fetch("/api/toolkit/nessus-compliance/convert", {
+        method: "POST", credentials: "include", body: buildFormData(),
+      });
+      if (!r.ok){
+        let detail = r.statusText;
+        try { detail = (await r.json()).detail || detail; } catch(_){}
+        throw new Error(detail);
+      }
+      // Grab the filename out of Content-Disposition; fall back to a
+      // sensible default so the user never gets a "download" with no
+      // extension.
+      const cd = r.headers.get("content-disposition") || "";
+      let suggested = "nessus_compliance.xlsx";
+      const m = cd.match(/filename="([^"]+)"/);
+      if (m) suggested = m[1];
+      const rowCount = r.headers.get("x-compliance-row-count") || "?";
+
+      const blob = await r.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = suggested;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setStatus(`Downloaded ${suggested} (${rowCount} rows).`, "ok");
+    } catch (err){
+      setStatus("Build failed: " + (err.message || err), "err");
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  renderList();
+})();
+</script>
+
+<style>
+#ncx-status.is-ok  { color:var(--ok-fg) }
+#ncx-status.is-err { color:var(--err-fg) }
+</style>
+{% endblock %}

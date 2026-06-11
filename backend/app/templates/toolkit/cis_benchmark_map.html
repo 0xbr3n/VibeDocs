@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}HCR → CIS Benchmark Mapping — VibeDocs{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>HCR → CIS Benchmark Mapping</h1>
+    <p class="page-sub">
+      Drop the client's custom hardening standard / Host Configuration
+      Review document (<code>.docx</code> or <code>.pdf</code>). We
+      auto-extract every <em>CIS … Benchmark</em> title and control id it
+      references, pair each one with the client's own control id, and
+      build a cross-reference workbook with the source context preserved
+      for audit. <a href="/toolkit" class="link small">← back to toolkit</a>
+    </p>
+  </div>
+</div>
+
+<section class="card" style="margin-top:18px">
+  <div style="padding:18px 18px 4px">
+    <div id="cm-dropzone" class="cm-dropzone" tabindex="0"
+         role="button" aria-label="Drop a .docx or .pdf here">
+      <div class="cm-dz-inner">
+        <div class="cm-dz-icon">🗺️</div>
+        <div class="cm-dz-title">Drop a <code>.docx</code> or <code>.pdf</code> here</div>
+        <div class="cm-dz-sub">or click to browse — one document, up to 50 MB</div>
+        <input type="file" id="cm-file-input"
+               accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+               hidden>
+        <button type="button" class="btn-secondary btn-sm" id="cm-pick-btn"
+                style="margin-top:10px">Choose file</button>
+      </div>
+    </div>
+
+    <div id="cm-filelist" class="cm-filelist" hidden></div>
+
+    <div class="cm-actions" id="cm-actions" hidden>
+      <button class="btn-secondary btn-sm" id="cm-clear-btn">Clear</button>
+      <button class="btn-secondary btn-sm" id="cm-preview-btn">Preview mapping</button>
+      <button class="btn-primary btn-sm"   id="cm-convert-btn">⤓ Build mapping workbook</button>
+    </div>
+
+    <p class="muted small" id="cm-status" style="margin:14px 0 0">Awaiting upload.</p>
+  </div>
+
+  <div id="cm-summary" class="cm-summary" hidden>
+    <h3 style="margin:0 0 8px 0;font-size:14px">Extraction preview</h3>
+    <div class="cm-summary-grid">
+      <div class="cm-stat"><div class="cm-stat-v" id="cm-stat-rows">0</div>
+        <div class="cm-stat-l">Mapping rows</div></div>
+      <div class="cm-stat"><div class="cm-stat-v" id="cm-stat-bench">0</div>
+        <div class="cm-stat-l">CIS benchmarks</div></div>
+      <div class="cm-stat"><div class="cm-stat-v" id="cm-stat-cis">0</div>
+        <div class="cm-stat-l">CIS control ids</div></div>
+      <div class="cm-stat"><div class="cm-stat-v" id="cm-stat-custom">0</div>
+        <div class="cm-stat-l">Custom control ids</div></div>
+    </div>
+    <div class="cm-summary-row" style="margin-top:10px">
+      <strong>Benchmarks cited:</strong>
+      <span id="cm-bench-list" class="muted small">—</span>
+    </div>
+    <div id="cm-warnings" class="cm-warn small" hidden></div>
+    <div style="overflow:auto;margin-top:12px;max-height:420px;border:1px solid var(--border);border-radius:8px">
+      <table class="data" id="cm-table" style="width:100%;font-size:12.5px">
+        <thead><tr>
+          <th>#</th><th>Custom Control</th><th>CIS Benchmark</th>
+          <th>CIS Control ID(s)</th><th>Source Context</th>
+        </tr></thead>
+        <tbody id="cm-tbody"></tbody>
+      </table>
+    </div>
+    <p class="muted small" id="cm-trunc" hidden style="margin-top:6px"></p>
+  </div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <header class="card-h"><h2 style="margin:0">What's in the workbook</h2></header>
+  <div style="padding:0 18px 16px;line-height:1.55;font-size:13.5px">
+    <ul style="margin:8px 0 0;padding-left:20px">
+      <li><strong>CIS Mapping</strong> — one row per (client control, CIS
+        benchmark): Custom Control, CIS Benchmark title, CIS Control
+        ID(s), and the source snippet it was extracted from.</li>
+      <li><strong>Benchmarks</strong> — the distinct
+        "CIS … Benchmark vX.Y.Z" titles the document referenced.</li>
+      <li><strong>Summary</strong> — extraction counts + any warnings
+        (e.g. CIS ids that couldn't be tied to a client control).</li>
+    </ul>
+    <p class="muted small" style="margin-top:10px">
+      The extractor recognises dotted CIS control ids (e.g.
+      <code>1.2.3</code>, <code>18.9.45.1</code>), prefixed ids
+      (<code>CIS 1.2.3</code>, <code>Recommendation 5.2</code>), and
+      client ids like <code>HCR-001</code> / <code>STD-1.4</code> /
+      <code>SEC.3.2</code>. Cells beginning with <code>=</code> are
+      escaped so Excel never treats extracted text as a formula.
+    </p>
+  </div>
+</section>
+
+<style>
+.cm-dropzone{border:2px dashed var(--border);border-radius:10px;padding:30px 20px;
+  text-align:center;cursor:pointer;transition:border-color .15s,background .15s,transform .12s;
+  background:var(--surface-2)}
+.cm-dropzone:hover,.cm-dropzone:focus-visible{border-color:var(--accent-dark);
+  background:var(--accent-soft);outline:none}
+.cm-dropzone.is-dragover{border-color:var(--accent-dark);background:var(--accent-soft);transform:scale(1.005)}
+.cm-dz-icon{font-size:42px;line-height:1;margin-bottom:4px}
+.cm-dz-title{font-weight:600;font-size:15px}
+.cm-dz-sub{color:var(--text-2);font-size:13px;margin-top:2px}
+.cm-filelist{margin-top:16px;padding:8px 0;border-top:1px dashed var(--border)}
+.cm-file-row{display:flex;gap:10px;align-items:center;padding:5px 0;font-size:13px}
+.cm-file-row .cm-file-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cm-file-row .cm-file-size{color:var(--text-2);font-size:12px;min-width:70px;text-align:right}
+.cm-file-row .cm-file-x{background:none;border:0;cursor:pointer;color:var(--err-fg);font-size:16px;padding:0 4px}
+.cm-actions{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}
+.cm-summary{padding:0 18px 18px}
+.cm-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.cm-stat{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.cm-stat-v{font-size:22px;font-weight:700}
+.cm-stat-l{color:var(--text-2);font-size:12px;margin-top:2px}
+.cm-summary-row{font-size:13px}
+.cm-warn{margin-top:10px;padding:8px 10px;border-radius:6px;
+  background:var(--medium-bg,rgba(255,170,0,.08));border:1px solid var(--border)}
+#cm-status.is-ok{color:var(--ok-fg)}
+#cm-status.is-err{color:var(--err-fg)}
+#cm-table td{vertical-align:top;max-width:340px;white-space:pre-wrap;word-break:break-word}
+</style>
+
+<script nonce="{{ request.state.csp_nonce }}">
+(function(){
+  const dz=document.getElementById("cm-dropzone");
+  const fi=document.getElementById("cm-file-input");
+  const pick=document.getElementById("cm-pick-btn");
+  const list=document.getElementById("cm-filelist");
+  const actions=document.getElementById("cm-actions");
+  const clearB=document.getElementById("cm-clear-btn");
+  const prevB=document.getElementById("cm-preview-btn");
+  const convB=document.getElementById("cm-convert-btn");
+  const st=document.getElementById("cm-status");
+  const sum=document.getElementById("cm-summary");
+  let staged=null;
+
+  function fmt(n){return n<1024?n+" B":n<1048576?(n/1024).toFixed(1)+" KB":(n/1048576).toFixed(1)+" MB";}
+  function setStatus(t,l){st.textContent=t;st.classList.remove("is-ok","is-err");if(l)st.classList.add("is-"+l);}
+  function render(){
+    list.innerHTML="";
+    if(!staged){list.hidden=true;actions.hidden=true;sum.hidden=true;setStatus("Awaiting upload.");return;}
+    list.hidden=false;actions.hidden=false;
+    const row=document.createElement("div");row.className="cm-file-row";
+    row.innerHTML='<span class="cm-file-name">📄 '+staged.name+'</span>'+
+      '<span class="cm-file-size">'+fmt(staged.size)+'</span>'+
+      '<button class="cm-file-x" type="button" aria-label="Remove">×</button>';
+    row.querySelector(".cm-file-x").addEventListener("click",()=>{staged=null;render();});
+    list.appendChild(row);
+    setStatus("1 document ready.");
+  }
+  function stage(fl){
+    const f=(fl&&fl[0])||null; if(!f)return;
+    const lo=(f.name||"").toLowerCase();
+    if(!lo.endsWith(".docx")&&!lo.endsWith(".pdf")){setStatus("Only .docx / .pdf accepted.","err");return;}
+    staged=f;render();
+  }
+  ["dragenter","dragover"].forEach(e=>dz.addEventListener(e,ev=>{ev.preventDefault();dz.classList.add("is-dragover");}));
+  ["dragleave","drop"].forEach(e=>dz.addEventListener(e,ev=>{ev.preventDefault();dz.classList.remove("is-dragover");}));
+  dz.addEventListener("drop",e=>stage(e.dataTransfer&&e.dataTransfer.files));
+  dz.addEventListener("click",()=>fi.click());
+  pick.addEventListener("click",e=>{e.stopPropagation();fi.click();});
+  dz.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fi.click();}});
+  fi.addEventListener("change",()=>{stage(fi.files);fi.value="";});
+  clearB.addEventListener("click",()=>{staged=null;render();});
+
+  function fd(){const f=new FormData();f.append("files",staged,staged.name);return f;}
+  function busy(b){[prevB,convB,clearB].forEach(x=>x.disabled=b);dz.style.pointerEvents=b?"none":"";dz.style.opacity=b?"0.6":"";}
+  function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+  function renderPreview(d){
+    document.getElementById("cm-stat-rows").textContent=d.row_count;
+    document.getElementById("cm-stat-bench").textContent=(d.benchmark_titles||[]).length;
+    document.getElementById("cm-stat-cis").textContent=d.cis_ids_detected;
+    document.getElementById("cm-stat-custom").textContent=d.custom_ids_detected;
+    document.getElementById("cm-bench-list").textContent=(d.benchmark_titles||[]).join(" · ")||"—";
+    const w=document.getElementById("cm-warnings");
+    if((d.warnings||[]).length){w.hidden=false;w.innerHTML=d.warnings.map(x=>"⚠ "+esc(x)).join("<br>");}
+    else{w.hidden=true;}
+    const tb=document.getElementById("cm-tbody");tb.innerHTML="";
+    (d.rows||[]).forEach((r,i)=>{
+      const tr=document.createElement("tr");
+      tr.innerHTML="<td>"+(i+1)+"</td><td>"+esc(r.custom_id||"(unassigned)")+
+        "</td><td>"+esc(r.cis_benchmark||"(none)")+"</td><td>"+esc(r.cis_control_ids)+
+        "</td><td>"+esc(r.context)+"</td>";
+      tb.appendChild(tr);
+    });
+    const tr=document.getElementById("cm-trunc");
+    if(d.truncated){tr.hidden=false;tr.textContent="Preview capped — the full set is in the downloaded workbook.";}
+    else{tr.hidden=true;}
+    sum.hidden=false;
+  }
+
+  prevB.addEventListener("click",async()=>{
+    if(!staged)return;busy(true);setStatus("Parsing document…");
+    try{
+      const r=await fetch("/api/toolkit/cis-benchmark-map/preview",{method:"POST",credentials:"include",body:fd()});
+      if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||r.statusText);}
+      const d=await r.json();renderPreview(d);
+      setStatus("Found "+d.row_count+" mapping row(s) across "+(d.benchmark_titles||[]).length+" benchmark(s).","ok");
+    }catch(e){setStatus("Preview failed: "+(e.message||e),"err");}finally{busy(false);}
+  });
+
+  convB.addEventListener("click",async()=>{
+    if(!staged)return;busy(true);setStatus("Building workbook…");
+    try{
+      const r=await fetch("/api/toolkit/cis-benchmark-map/convert",{method:"POST",credentials:"include",body:fd()});
+      if(!r.ok){let d=r.statusText;try{d=(await r.json()).detail||d;}catch(_){}throw new Error(d);}
+      const cd=r.headers.get("content-disposition")||"";
+      let name="hcr_cis_mapping.xlsx";const m=cd.match(/filename="([^"]+)"/);if(m)name=m[1];
+      const rows=r.headers.get("x-cis-mapping-rows")||"?";
+      const b=await r.blob();const u=URL.createObjectURL(b);
+      const a=document.createElement("a");a.href=u;a.download=name;
+      document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(u);
+      setStatus("Downloaded "+name+" ("+rows+" rows).","ok");
+    }catch(e){setStatus("Build failed: "+(e.message||e),"err");}finally{busy(false);}
+  });
+
+  render();
+})();
+</script>
+{% endblock %}

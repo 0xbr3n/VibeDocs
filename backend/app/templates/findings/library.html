@@ -1,0 +1,1687 @@
+{% extends "base.html" %}
+{% block title %}Findings Library{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Findings Library</h1>
+    <p class="page-sub">Reusable security findings for your reports</p>
+  </div>
+  <div class="actions">
+    {% if user.role.value in ['admin','senior'] %}
+    <button class="btn-secondary" id="seed-btn" title="Load the bundled default findings catalogue (Web, API, Infra, Mobile, Thick Client, Wi-Fi, Kiosk, OT, AWS, Azure, Source Code)">
+      ＋ Load defaults
+    </button>
+    <button class="btn-secondary" id="classify-btn" title="Auto-tag all findings with the report templates they apply to">
+      🏷 Auto-classify
+    </button>
+    {% endif %}
+    <button class="btn-primary" onclick="window.location='/library/new'">
+      + Add Finding
+    </button>
+  </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="card" style="margin-top:20px">
+  <div style="padding:16px 20px;display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+    <label style="flex:1;min-width:240px;margin:0">
+      Search
+      <input type="text" id="search-input" placeholder="Search by title, description, or tags...">
+    </label>
+    <label style="min-width:160px;margin:0">
+      Severity
+      <select id="severity-filter">
+        <option value="">All Severities</option>
+        <option value="critical">Critical</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+        <option value="info">Info</option>
+      </select>
+    </label>
+    <label style="min-width:160px;margin:0">
+      Applicable to
+      <select id="template-filter">
+        <option value="">All categories</option>
+        <option value="web_vapt">Web VAPT</option>
+        <option value="api_vapt">API PT</option>
+        <option value="infra_vapt">Infra VAPT</option>
+        <option value="infra_va">Infra VA</option>
+        <option value="mobile_pt">Mobile PT</option>
+        <option value="thick_client_pt">Thick Client PT</option>
+        <option value="wifi_pt">Wi-Fi PT</option>
+        <option value="kiosk_pt">Kiosk PT</option>
+        <option value="ot_vapt">OT VAPT</option>
+        <option value="aws_cloud_vapt">AWS Cloud VAPT</option>
+        <option value="azure_cloud_vapt">Azure Cloud VAPT</option>
+        <option value="source_code_review">Source Code Review</option>
+        <option value="cloud_review">Cloud Review (legacy)</option>
+      </select>
+    </label>
+    {# Sort dropdown — choices are the ones consultants reach for most often
+       when triaging a library card-by-card: alphabetical (both directions),
+       severity ranked (Critical→Info or reverse), grouped by primary VAPT
+       template, newest additions on top, and a CWE-ID numeric sort.
+       The selected value is persisted in localStorage so it survives a
+       page refresh. #}
+    <label style="min-width:180px;margin:0">
+      Sort by
+      <select id="sort-by">
+        <option value="title_asc">Title (A → Z)</option>
+        <option value="title_desc">Title (Z → A)</option>
+        <option value="severity_desc">Severity (High → Low)</option>
+        <option value="severity_asc">Severity (Low → High)</option>
+        <option value="category">VAPT Category</option>
+        <option value="newest">Newest first</option>
+        <option value="cwe">CWE ID</option>
+      </select>
+    </label>
+    <button class="btn-secondary" onclick="clearFilters()">Clear</button>
+  </div>
+</div>
+
+<!-- Findings Grid -->
+<div id="findings-grid" style="margin-top:20px;display:grid;gap:16px">
+  <p class="muted" style="text-align:center;padding:40px">Loading findings...</p>
+</div>
+
+<!-- Finding details modal -->
+<div id="finding-detail-modal" class="modal" hidden>
+  <div class="modal-card" style="max-width:760px">
+    <header class="card-h">
+      <h2 id="fd-title">Finding</h2>
+      <button class="link" onclick="closeFindingDetail()">&times;</button>
+    </header>
+    <div class="modal-body" id="fd-body">
+      <p class="muted small">Loading…</p>
+    </div>
+  </div>
+</div>
+
+<!-- Walkthrough modal shown before "Use in Report" when the finding still
+     contains unresolved template tokens (e.g. "[DESCRIBE HOW THIS WAS
+     PERFORMED]"). Lists each field that needs customisation and forces a
+     deliberate confirmation so consultants can't blindly copy-paste. -->
+<div id="placeholder-walkthrough-modal" class="modal" hidden>
+  <div class="modal-card" style="max-width:680px">
+    <header class="card-h">
+      <h2>This finding needs customising</h2>
+      <button class="link" onclick="dismissPlaceholderWalkthrough(false)">&times;</button>
+    </header>
+    <div class="modal-body">
+      <p style="margin:0 0 10px">
+        Before this finding is added to a report, you need to customise the
+        fields below to reflect <em>this</em> engagement. The placeholders
+        are there to guide you — leaving them in means the deliverable
+        ships with bracketed prompt text instead of real evidence.
+      </p>
+      <div id="pw-finding-title" class="small muted" style="margin-bottom:14px"></div>
+
+      <div id="pw-field-list"></div>
+
+      <div style="margin-top:14px;padding:10px 12px;border:1px solid var(--border);
+                  border-radius:8px;background:var(--surface-2)">
+        <p class="small" style="margin:0 0 6px"><strong>How to use this finding properly</strong></p>
+        <ol class="small" style="margin:0 0 0 18px;padding:0">
+          <li>Add it to a report (you can edit it there).</li>
+          <li>For every <code>[BRACKETED]</code> prompt, replace it with the
+              evidence from <em>this</em> engagement: the exact endpoint,
+              the request/response, what you observed.</li>
+          <li>Delete any "[DELETE IF IRRELEVANT]" sentences that don't apply
+              to your client.</li>
+          <li>Fill in <em>Affected Asset</em> with the specific target.</li>
+          <li>Re-run the placeholder check before submitting for review.</li>
+        </ol>
+      </div>
+
+      <label style="display:flex;align-items:flex-start;gap:8px;margin:14px 0 0;cursor:pointer">
+        <input type="checkbox" id="pw-acknowledge" style="margin-top:3px">
+        <span class="small">
+          I understand. I will replace every bracketed placeholder with
+          engagement-specific content before submitting this report for review.
+        </span>
+      </label>
+
+      <!-- Session-scoped "don't show again" toggle. Stored in sessionStorage
+           so it auto-resets when the user closes the browser/tab — long
+           enough to save clicks while batch-inserting findings during one
+           sitting, short enough to not silently disable the safety net
+           forever. A small reset link in the topbar User menu can flip it
+           back on mid-session. -->
+      <label style="display:flex;align-items:flex-start;gap:8px;margin:10px 0 0;cursor:pointer">
+        <input type="checkbox" id="pw-skip-future" style="margin-top:3px">
+        <span class="small muted">
+          Don't show this for the rest of this session. (Auto-accepts every
+          finding insert until you close the browser. Re-enable from the user
+          menu's "Re-enable finding walkthrough".)
+        </span>
+      </label>
+
+      <div class="actions" style="margin-top:14px;gap:8px;display:flex;justify-content:flex-end">
+        <button class="btn-secondary" type="button"
+                onclick="dismissPlaceholderWalkthrough(false)">Cancel</button>
+        <button class="btn-primary" type="button" id="pw-proceed-btn" disabled
+                onclick="dismissPlaceholderWalkthrough(true)">Continue — I'll customise it</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Library Finding modal -->
+<div id="edit-finding-modal" class="modal" hidden>
+  <div class="modal-card" style="max-width:760px;max-height:90vh;display:flex;flex-direction:column">
+    <header class="card-h" style="flex-shrink:0">
+      <h2>Edit Library Finding</h2>
+      <button class="link" onclick="closeEditModal()">&times;</button>
+    </header>
+    <div class="modal-body" style="overflow-y:auto;flex:1;padding:16px 20px">
+      <input type="hidden" id="ef-id">
+
+      <label style="display:block;margin-bottom:12px">
+        Title <span style="color:var(--err-fg)">*</span>
+        <input type="text" id="ef-title" placeholder="Finding title" style="margin-top:4px">
+      </label>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <label>
+          Severity <span style="color:var(--err-fg)">*</span>
+          <select id="ef-severity" style="margin-top:4px">
+            <option value="Critical">Critical</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+            <option value="Informational">Informational</option>
+          </select>
+        </label>
+        <label>
+          Template <span style="color:var(--err-fg)">*</span>
+          <select id="ef-template" style="margin-top:4px">
+            <option value="">Loading…</option>
+          </select>
+        </label>
+      </div>
+
+      <label style="display:block;margin-bottom:12px">
+        Description <span style="color:var(--err-fg)">*</span>
+        <span class="small muted" style="margin-left:6px">(Markdown supported)</span>
+        <textarea id="ef-description" rows="6" placeholder="Generic description of the vulnerability…"></textarea>
+      </label>
+
+      <label style="display:block;margin-bottom:12px">
+        Impact
+        <textarea id="ef-impact" rows="4" placeholder="Business and technical impact…"></textarea>
+      </label>
+
+      <label style="display:block;margin-bottom:12px">
+        Remediation
+        <textarea id="ef-remediation" rows="4" placeholder="Recommended remediation steps…"></textarea>
+      </label>
+
+      <label style="display:block;margin-bottom:12px">
+        References
+        <textarea id="ef-references" rows="3" placeholder="Links, CVEs, standards references…"></textarea>
+      </label>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <label>
+          CWE ID
+          <input type="text" id="ef-cwe" placeholder="e.g. CWE-79" style="margin-top:4px">
+        </label>
+        <label>
+          OWASP Category
+          <input type="text" id="ef-owasp" placeholder="e.g. A03:2021" style="margin-top:4px">
+        </label>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px;margin-bottom:12px">
+        <label>
+          Default CVSS Score
+          <input type="number" id="ef-cvss-score" min="0" max="10" step="0.1" placeholder="0.0–10.0" style="margin-top:4px">
+        </label>
+        <label>
+          Default CVSS Vector
+          <input type="text" id="ef-cvss-vector" placeholder="e.g. CVSS:4.0/AV:N/AC:L/…" style="margin-top:4px">
+        </label>
+      </div>
+
+      <label style="display:block;margin-bottom:4px">
+        Tags <span class="small muted">(comma-separated, excluding template tags)</span>
+        <input type="text" id="ef-tags" placeholder="e.g. web, xss, injection" style="margin-top:4px">
+      </label>
+
+      <div id="ef-error" style="display:none;margin-top:12px;padding:10px 12px;
+           border:1px solid var(--err-line);background:var(--err-bg);color:var(--err-fg);
+           border-radius:6px;font-size:13px"></div>
+    </div>
+    <div class="actions" style="flex-shrink:0;padding:12px 20px;border-top:1px solid var(--border)">
+      <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-primary" id="ef-save-btn" onclick="saveFinding()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- "Use in Report" modal: pick which report to inject the finding into -->
+<div id="use-report-modal" class="modal" hidden>
+  <div class="modal-card" style="max-width:620px">
+    <header class="card-h">
+      <h2 id="use-title">Add finding to report</h2>
+      <button class="link" onclick="closeUseModal()">&times;</button>
+    </header>
+    <div class="modal-body">
+      <p class="muted small" style="margin:0 0 12px">
+        Pick a report you have edit access to. The finding will be appended to
+        its latest version.
+      </p>
+      <input id="use-search" type="search" placeholder="Filter reports…"
+             autocomplete="off" style="margin-bottom:10px;width:100%">
+      <div id="use-report-list">
+        <p class="muted small">Loading reports…</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid transparent;
+}
+
+/* All severity chips read from CSS vars now so they respect light/dark theme
+   and stay in lock-step with .sev-badge on the editor page. */
+.badge-critical { background:var(--critical-bg); color:var(--critical-fg); border-color:var(--critical-line); }
+.badge-high     { background:var(--high-bg);     color:var(--high-fg);     border-color:var(--high-line); }
+.badge-medium   { background:var(--medium-bg);   color:var(--medium-fg);   border-color:var(--medium-line); }
+.badge-low      { background:var(--low-bg);      color:var(--low-fg);      border-color:var(--low-line); }
+.badge-info     { background:var(--info-bg);     color:var(--info-fg);     border-color:var(--info-line); }
+.badge-undefined, .badge-default {
+  background:var(--surface-3); color:var(--text-2); border-color:var(--border);
+}
+
+.tpl-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-left: 4px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: .02em;
+}
+
+/* ====== Finding detail modal — markdown styling ====== */
+.md-meta{
+  display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  padding:8px 10px;margin:0 0 12px;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:6px;
+  font-size:12px;color:var(--text-2);
+}
+.md-meta .dot{opacity:.5}
+.md-meta code{font-size:11px;background:var(--surface-3);padding:1px 4px;border-radius:3px}
+.md-section{
+  margin:14px 0;padding:0 0 12px;border-bottom:1px solid var(--border);
+}
+.md-section:last-child{border-bottom:none}
+.md-section h3{
+  margin:0 0 6px;font-size:13px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--text-2);
+}
+.md-body{font-size:13.5px;line-height:1.55;color:var(--text)}
+.md-body p{margin:6px 0}
+.md-body ul, .md-body ol{margin:6px 0 6px 22px;padding:0}
+.md-body li{margin:3px 0}
+.md-body .md-h{margin:10px 0 4px;font-size:13px;font-weight:600;color:var(--text)}
+.md-body a{color:var(--accent-dark);word-break:break-all}
+.md-body .md-code{
+  font-family:ui-monospace,Consolas,monospace;font-size:12px;
+  background:var(--surface-3);padding:1px 5px;border-radius:3px;
+  border:1px solid var(--border);
+}
+.md-body .md-pre{
+  background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:6px;
+  overflow-x:auto;font-size:12.5px;line-height:1.45;margin:8px 0;
+  border:1px solid #1e293b;
+}
+.md-body .md-pre code{font-family:ui-monospace,Consolas,monospace;background:none;border:0;color:inherit;padding:0}
+
+/* ── Quill rich-text editor inside Edit Library Finding modal ─────────── */
+.ef-rich-host{
+  border:1px solid var(--border);border-radius:6px;
+  background:var(--surface);color:var(--text);
+  margin-top:4px;font-size:13.5px;
+}
+.ef-rich-host .ql-toolbar.ql-snow{
+  border:none;border-bottom:1px solid var(--border);
+  padding:4px 8px;border-radius:6px 6px 0 0;
+  background:var(--surface-2);
+}
+.ef-rich-host .ql-container.ql-snow{border:none;border-radius:0 0 6px 6px}
+.ef-rich-host .ql-editor{padding:8px 12px;min-height:80px;line-height:1.55}
+.ef-rich-host .ql-editor.ql-blank::before{color:var(--text-2);font-style:italic}
+/* Snow stroke/fill colours adapt to dark theme */
+.ef-rich-host .ql-stroke{stroke:var(--text-2)}
+.ef-rich-host .ql-fill{fill:var(--text-2)}
+.ef-rich-host .ql-snow .ql-picker-label{color:var(--text-2)}
+.ef-rich-host .ql-toolbar button:hover .ql-stroke,
+.ef-rich-host .ql-toolbar button.ql-active .ql-stroke{stroke:var(--accent-dark)}
+.ef-rich-host .ql-toolbar button:hover .ql-fill,
+.ef-rich-host .ql-toolbar button.ql-active .ql-fill{fill:var(--accent-dark)}
+.ef-rich-host .ql-snow .ql-picker-options{
+  background:var(--surface-2);border:1px solid var(--border);border-radius:6px;z-index:200}
+.ef-rich-host .ql-snow .ql-picker-options .ql-picker-item{color:var(--text)}
+/* Code-block inside the editor */
+.ef-rich-host .ql-editor pre.ql-syntax{
+  background:#0f172a;color:#e2e8f0;border-radius:5px;padding:8px 10px;
+  font-size:12px;overflow-x:auto}
+/* Overflow fix so toolbar dropdowns escape the modal-body's scroll clip */
+.ef-rich-host,.ef-rich-host .ql-toolbar.ql-snow,.ef-rich-host .ql-container.ql-snow{
+  overflow:visible !important}
+</style>
+
+<script nonce="{{ request.state.csp_nonce }}">
+// Embed the current user so the renderer can show ownership-specific
+// actions (Submit for team review on own drafts, hide it on others').
+const CURRENT_USER_ID = {{ user.id | tojson }};
+const CURRENT_USER_ROLE = {{ user.role.value | tojson }};
+
+let allFindings = [];
+let templatesById = {};   // id -> code (resolved on first paint)
+let templatesByCode = {}; // code -> id (reverse map, populated alongside templatesById)
+
+const TEMPLATE_INFO = {
+  web_vapt:           {label:"Web VAPT",     color:"#2563eb"},
+  api_vapt:           {label:"API PT",       color:"#a855f7"},
+  infra_vapt:         {label:"Infra VAPT",   color:"#0ea5e9"},
+  infra_va:           {label:"Infra VA",     color:"#0284c7"},
+  mobile_pt:          {label:"Mobile PT",    color:"#ec4899"},
+  thick_client_pt:    {label:"Thick Client", color:"#f97316"},
+  wifi_pt:            {label:"Wi-Fi PT",     color:"#14b8a6"},
+  kiosk_pt:           {label:"Kiosk PT",     color:"#84cc16"},
+  ot_vapt:            {label:"OT VAPT",      color:"#dc2626"},
+  aws_cloud_vapt:     {label:"AWS Cloud",    color:"#ea580c"},
+  azure_cloud_vapt:   {label:"Azure Cloud",  color:"#2563eb"},
+  source_code_review: {label:"Source Code",  color:"#6366f1"},
+  cloud_review:       {label:"Cloud",        color:"#10b981"},
+};
+
+async function ensureTemplatesIndex(){
+  if (Object.keys(templatesById).length) return;
+  try {
+    const r = await fetch('/api/templates', {credentials:'include'});
+    if (r.ok){
+      const items = await r.json();
+      for (const t of (items || [])) {
+        templatesById[t.id] = t.code;
+        templatesByCode[t.code] = t.id;
+      }
+    }
+  } catch (_) {}
+}
+
+function findingTemplateCodes(f){
+  const codes = new Set();
+  const primary = templatesById[f.template_id];
+  if (primary) codes.add(primary);
+  for (const t of (f.tags || [])){
+    if (typeof t === "string" && t.startsWith("template:")){
+      codes.add(t.slice("template:".length));
+    }
+  }
+  return [...codes];
+}
+
+function templateBadgeHTML(code){
+  const meta = TEMPLATE_INFO[code] || {label: code, color:"#6b7280"};
+  const safeColor = (meta.color || "#6b7280").replace(/[^a-zA-Z0-9#(),. %]/g, "");
+  return `<span class="tpl-badge" style="background:${safeColor}">${escapeHtml(meta.label || code)}</span>`;
+}
+
+// Load findings
+async function loadFindings() {
+  try {
+    const resp = await fetch('/api/findings-library?limit=2000', {credentials: 'include'});
+    if (!resp.ok) {
+      document.getElementById('findings-grid').innerHTML = 
+        '<p class="muted" style="text-align:center;padding:40px">Error loading findings</p>';
+      return;
+    }
+    allFindings = await resp.json();
+    await ensureTemplatesIndex();
+    // Route through filterFindings so any active search/severity/template
+    // filter from a previous interaction is preserved AND the current
+    // sort selection is applied to the initial render.
+    filterFindings();
+  } catch (err) {
+    console.error('Error loading findings:', err);
+    document.getElementById('findings-grid').innerHTML = 
+      '<p class="muted" style="text-align:center;padding:40px">Error loading findings</p>';
+  }
+}
+
+// Render findings
+function renderFindings(findings) {
+  const grid = document.getElementById('findings-grid');
+  
+  if (findings.length === 0) {
+    grid.innerHTML = '<p class="muted" style="text-align:center;padding:40px">No findings found. Add your first one!</p>';
+    return;
+  }
+  
+  grid.innerHTML = findings.map(f => {
+    // Get severity - handle different field names
+    const severity = f.severity || f.default_severity || 'undefined';
+    const severityClass = getSeverityClass(severity);
+    const description = f.description || f.vuln_description || 'No description';
+    const tags = f.tags || [];
+
+    const tplCodes = findingTemplateCodes(f);
+    const tplBadges = tplCodes.map(templateBadgeHTML).join('');
+    // Strip the template:* tags from the human-readable tag list to avoid
+    // showing both the badge and the raw "template:web_vapt" string.
+    const visibleTags = tags.filter(t => !(typeof t === 'string' && t.startsWith('template:')));
+
+    // Status badge for non-approved entries. Approved entries are the
+    // common case (team library) so we leave them unmarked to avoid
+    // visual noise. Drafts / pending get a clear marker so the author
+    // knows what state the finding is in.
+    let statusBadge = '';
+    const status = f.status || 'approved';
+    if (status === 'draft'){
+      statusBadge = '<span class="badge badge-secondary" title="Visible only to you until submitted">Draft (private)</span>';
+    } else if (status === 'pending_review'){
+      statusBadge = '<span class="badge badge-warning" title="Awaiting admin review">Pending review</span>';
+    } else if (status === 'archived'){
+      statusBadge = '<span class="badge badge-muted">Archived</span>';
+    }
+
+    // Author-only action: promote a personal draft to the review queue.
+    const isOwner = f.created_by_id === CURRENT_USER_ID;
+    const canSubmit = isOwner && status === 'draft';
+    const submitBtn = canSubmit
+      ? `<button class="btn-secondary btn-sm" data-action="submit-review" data-id="${f.id}" title="Send this draft to the admin review queue. Once approved, every consultant can use it.">Submit for team review</button>`
+      : '';
+
+    // Edit button: visible to admins, seniors, and the finding's own author.
+    const canEdit = CURRENT_USER_ROLE === 'admin' || CURRENT_USER_ROLE === 'senior' || isOwner;
+    const editBtn = canEdit
+      ? `<button class="btn-secondary btn-sm" data-action="edit" data-id="${f.id}">Edit</button>`
+      : '';
+
+    // SECURITY / CORRECTNESS: every finding-derived value below is
+    // escaped before it goes into innerHTML. Without this, a finding
+    // whose description legitimately contains markup (e.g. the
+    // Clickjacking finding's `<iframe src='...'></iframe>` proof-of-
+    // concept text) gets parsed as REAL HTML by the browser — it
+    // rendered a live empty iframe AND the unbalanced tag swallowed
+    // every card built after it in the `.map().join('')` string, so
+    // the library appeared to "stop" at Clickjacking. escapeHtml()
+    // turns the markup back into inert text. truncate() only slices,
+    // so escaping its output is safe (no entity gets cut mid-sequence
+    // because we escape AFTER truncating).
+    return `
+      <div class="card">
+        <div class="card-h" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="flex:1;min-width:0">
+            <strong>${escapeHtml(f.title)}</strong>
+            ${statusBadge}
+          </div>
+          <span class="badge badge-${severityClass}">${escapeHtml(severity)}</span>
+        </div>
+        <div style="padding:12px 16px">
+          <p class="small" style="margin:0 0 8px">${escapeHtml(truncate(description, 150))}</p>
+          ${f.created_by_username ? `<p class="small muted" style="margin:4px 0 0">By: <strong>${escapeHtml(f.created_by_username)}</strong></p>` : ''}
+        </div>
+        <div class="actions" style="padding:12px 16px;border-top:1px solid var(--border);flex-wrap:wrap">
+          <button class="btn-secondary btn-sm" data-action="view" data-id="${f.id}">View Details</button>
+          <button class="btn-primary btn-sm" data-action="use" data-id="${f.id}">Use in Report</button>
+          ${submitBtn}
+          ${editBtn}
+          <button class="btn-danger btn-sm" data-action="delete" data-id="${f.id}">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Delegated click handler for dynamically-rendered finding cards.
+// Inline onclick attributes injected via innerHTML are unreliable when CSP
+// has a nonce (nonce nullifies 'unsafe-inline' in CSP Level 3). Using
+// data-action / data-id on buttons + a single delegated listener is robust.
+document.getElementById('findings-grid').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const id = parseInt(btn.dataset.id, 10);
+  const action = btn.dataset.action;
+  if (action === 'view')          viewFinding(id);
+  else if (action === 'use')      useFinding(id);
+  else if (action === 'delete')   deleteFinding(id);
+  else if (action === 'edit')     editFinding(id);
+  else if (action === 'submit-review') submitForReview(id);
+});
+
+// Filter findings
+function filterFindings() {
+  const search = document.getElementById('search-input').value.toLowerCase();
+  const severity = document.getElementById('severity-filter').value;
+  const template = document.getElementById('template-filter').value;
+
+  const filtered = allFindings.filter(f => {
+    // Get severity from different possible field names
+    const fSeverity = (f.severity || f.default_severity || '').toLowerCase();
+    const fTitle = (f.title || '').toLowerCase();
+    const fDescription = (f.description || f.vuln_description || '').toLowerCase();
+    const fTags = f.tags || [];
+
+    const fCwe = (f.cwe || '').toLowerCase();
+    const fOwasp = (f.owasp_category || '').toLowerCase();
+    const matchSearch = !search ||
+      fTitle.includes(search) ||
+      fDescription.includes(search) ||
+      fTags.some(t => t.toLowerCase().includes(search)) ||
+      fCwe.includes(search) ||
+      fOwasp.includes(search);
+
+    const matchSeverity = !severity || fSeverity === severity.toLowerCase();
+    // Applicability comes from BOTH the primary template_id AND any
+    // "template:<code>" entries in the finding's tags. Use the same helper
+    // the card renderer uses so the filter and the badges agree.
+    const codes = findingTemplateCodes(f);
+    const matchTemplate = !template || codes.includes(template);
+
+    return matchSearch && matchSeverity && matchTemplate;
+  });
+
+  renderFindings(sortFindings(filtered));
+}
+
+function clearFilters() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('severity-filter').value = '';
+  document.getElementById('template-filter').value = '';
+  // Reset sort to the consultant-friendly default (alphabetical A→Z) and
+  // drop the persisted preference so the next page load also starts clean.
+  document.getElementById('sort-by').value = 'title_asc';
+  try { localStorage.removeItem(_SORT_PREF_KEY); } catch(_){}
+  renderFindings(sortFindings(allFindings));
+}
+
+// ============================================================
+// Sorting — applied AFTER filtering so the visible list always lands in
+// the order the user picked. The selected option is persisted in
+// localStorage so each consultant's preferred view sticks across reloads.
+// ============================================================
+
+// Ranking for severity sorts. Anything not in the map falls to 0 so weird
+// values (legacy "undefined", empty strings) sink to the bottom of a
+// descending sort and rise on ascending — consistent and predictable.
+const _SEVERITY_RANK = {
+  critical: 5,
+  high: 4,
+  medium: 3,
+  low: 2,
+  info: 1,
+  informational: 1,
+};
+
+// Stable, human-friendly ordering of the primary VAPT categories so the
+// "VAPT Category" sort groups web findings together, API together, etc.
+// — instead of grouping them by alphabetised template code (which would
+// scatter them).
+const _CATEGORY_ORDER = [
+  'web_vapt', 'api_vapt', 'mobile_pt', 'thick_client_pt',
+  'infra_vapt', 'infra_va', 'wifi_pt', 'kiosk_pt', 'ot_vapt',
+  'aws_cloud_vapt', 'azure_cloud_vapt', 'cloud_review',
+  'source_code_review',
+];
+
+function _severityOf(f) {
+  const sev = (f.severity || f.default_severity || '').toLowerCase();
+  return _SEVERITY_RANK[sev] || 0;
+}
+
+function _primaryCategoryOf(f) {
+  const codes = findingTemplateCodes(f);
+  if (!codes.length) return { rank: 999, label: '' };
+  // Prefer whichever of the finding's codes appears earliest in our
+  // curated category order. Falls back to the raw code (alphabetised at
+  // the tail) for codes we haven't curated yet.
+  let best = { rank: 999, label: codes[0] };
+  for (const c of codes) {
+    const idx = _CATEGORY_ORDER.indexOf(c);
+    if (idx !== -1 && idx < best.rank) best = { rank: idx, label: c };
+  }
+  if (best.rank === 999) {
+    // No curated code matched — sort uncategorised entries to the end,
+    // alphabetised by their code so the order is still deterministic.
+    best.label = codes.slice().sort()[0];
+  }
+  return best;
+}
+
+function _cweNumberOf(f) {
+  // CWE strings look like "CWE-79", "CWE-444", "CWE-200". Findings without
+  // a CWE drop to the end of the ascending sort via Number.MAX_SAFE_INTEGER.
+  const raw = (f.cwe || '').toString();
+  const m = raw.match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER;
+}
+
+function sortFindings(list) {
+  const mode = document.getElementById('sort-by').value || 'title_asc';
+  // Always work on a copy so we never mutate `allFindings` — the filter
+  // path expects the source array to remain untouched.
+  const arr = list.slice();
+  // Title-based tiebreaker keeps sorts stable across reloads (browser
+  // Array.prototype.sort is stable, but ties still need a deterministic
+  // secondary key to avoid surprising the user with shuffled cards).
+  const byTitleAsc = (a, b) =>
+    (a.title || '').localeCompare(b.title || '', undefined, {sensitivity: 'base'});
+
+  switch (mode) {
+    case 'title_desc':
+      arr.sort((a, b) => -byTitleAsc(a, b));
+      break;
+    case 'severity_desc':
+      arr.sort((a, b) => (_severityOf(b) - _severityOf(a)) || byTitleAsc(a, b));
+      break;
+    case 'severity_asc':
+      arr.sort((a, b) => (_severityOf(a) - _severityOf(b)) || byTitleAsc(a, b));
+      break;
+    case 'category': {
+      arr.sort((a, b) => {
+        const ca = _primaryCategoryOf(a);
+        const cb = _primaryCategoryOf(b);
+        return (ca.rank - cb.rank) ||
+               ca.label.localeCompare(cb.label) ||
+               byTitleAsc(a, b);
+      });
+      break;
+    }
+    case 'newest':
+      // ID is a reliable monotonic proxy for "added more recently" — the
+      // seeder and the manual-add path both write incrementing primary keys.
+      arr.sort((a, b) => (b.id || 0) - (a.id || 0));
+      break;
+    case 'cwe':
+      arr.sort((a, b) => (_cweNumberOf(a) - _cweNumberOf(b)) || byTitleAsc(a, b));
+      break;
+    case 'title_asc':
+    default:
+      arr.sort(byTitleAsc);
+      break;
+  }
+  return arr;
+}
+
+const _SORT_PREF_KEY = 'vapt_library_sort';
+
+function _restoreSortPreference() {
+  try {
+    const saved = localStorage.getItem(_SORT_PREF_KEY);
+    if (!saved) return;
+    const sel = document.getElementById('sort-by');
+    // Guard against a stale preference referring to an option we've since
+    // renamed/removed; silently ignore it instead of leaving the dropdown
+    // showing an empty value.
+    if (sel && Array.from(sel.options).some(o => o.value === saved)) {
+      sel.value = saved;
+    }
+  } catch(_) { /* localStorage blocked — fall back to default */ }
+}
+
+function _persistSortPreference() {
+  try { localStorage.setItem(_SORT_PREF_KEY, document.getElementById('sort-by').value); }
+  catch(_){}
+}
+
+function getSeverityClass(severity) {
+  if (!severity) return 'undefined';
+  
+  const sev = severity.toLowerCase();
+  const map = {
+    'critical': 'critical',
+    'high': 'high',
+    'medium': 'medium',
+    'low': 'low',
+    'info': 'info',
+    'informational': 'info'
+  };
+  return map[sev] || 'undefined';
+}
+
+function truncate(text, length) {
+  if (!text) return '';
+  return text.length > length ? text.substring(0, length) + '...' : text;
+}
+
+// Tiny safe markdown renderer covering the subset we actually use in finding
+// library entries: headings, fenced/inline code, bold, italics, bullet lists,
+// numbered lists, links, and paragraph breaks. We intentionally do NOT pull
+// in a full markdown library — the bleach-allowlisted output below is the
+// XSS boundary.
+function renderMarkdownSafely(src) {
+  if (!src) return '';
+  // Escape everything first; we only re-introduce a fixed set of tags below.
+  let s = String(src).replace(/[&<>"']/g,
+    c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+
+  // Fenced code blocks ```...```
+  s = s.replace(/```([\s\S]*?)```/g, (_, code) =>
+    `<pre class="md-pre"><code>${code.replace(/^\n+|\n+$/g,'')}</code></pre>`);
+
+  // Inline code `...`
+  s = s.replace(/`([^`\n]+)`/g, '<code class="md-code">$1</code>');
+
+  // Bold **...** and italics *...* (after bold so we don't eat the markers)
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+
+  // Auto-link bare URLs (we re-escaped earlier so `&amp;` stays as text inside the href)
+  s = s.replace(/(https?:\/\/[^\s<]+)/g, url =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+
+  // Headings — process line by line. Convert numbered and bullet list lines
+  // into <ul>/<ol> groups; treat blank lines as paragraph breaks.
+  const lines = s.split(/\r?\n/);
+  const out = [];
+  let para = [];
+  let listType = null;  // "ul" | "ol" | null
+
+  const flushPara = () => {
+    if (para.length){
+      out.push('<p>' + para.join(' ') + '</p>');
+      para = [];
+    }
+  };
+  const closeList = () => { if (listType){ out.push(`</${listType}>`); listType = null; } };
+
+  for (let raw of lines){
+    const line = raw;
+    if (!line.trim()){
+      flushPara(); closeList(); continue;
+    }
+    const h = line.match(/^(#{1,6})\s+(.+)$/);
+    if (h){ flushPara(); closeList();
+      const lvl = h[1].length;
+      out.push(`<h${lvl + 2} class="md-h">${h[2]}</h${lvl + 2}>`); continue;
+    }
+    const ul = line.match(/^\s*[-*+]\s+(.+)$/);
+    if (ul){ flushPara();
+      if (listType !== "ul"){ closeList(); out.push('<ul>'); listType = "ul"; }
+      out.push(`<li>${ul[1]}</li>`); continue;
+    }
+    const ol = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if (ol){ flushPara();
+      if (listType !== "ol"){ closeList(); out.push('<ol>'); listType = "ol"; }
+      out.push(`<li>${ol[1]}</li>`); continue;
+    }
+    // plain text line — accumulate into current paragraph; lists close.
+    closeList();
+    para.push(line.trim());
+  }
+  flushPara(); closeList();
+  return out.join('\n');
+}
+
+// ============================================================
+// Quill rich-text editor — lazy-loaded on first edit-modal open
+// ============================================================
+let _quillLoaded = false;
+let _quillLoadPromise = null;
+
+function _loadQuill() {
+  if (_quillLoaded) return Promise.resolve();
+  if (_quillLoadPromise) return _quillLoadPromise;
+  _quillLoadPromise = new Promise((resolve, reject) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://cdn.quilljs.com/1.3.7/quill.snow.css';
+    document.head.appendChild(link);
+    const s = document.createElement('script');
+    s.src = 'https://cdn.quilljs.com/1.3.7/quill.min.js';
+    s.onload = () => { _quillLoaded = true; resolve(); };
+    s.onerror = () => reject(new Error('Could not load Quill editor'));
+    document.head.appendChild(s);
+  });
+  return _quillLoadPromise;
+}
+
+const EF_QUILL_TOOLBAR = [
+  ['bold', 'italic', 'underline', 'strike'],
+  [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+  ['blockquote', 'code-block'],
+  ['link'],
+  ['clean'],
+];
+
+// Map of textarea-id → Quill instance (persists across modal opens)
+const _EF_QUILLS = {};
+
+function _mountOrUpdateEditor(taId, htmlContent) {
+  const ta = document.getElementById(taId);
+  if (!ta) return;
+
+  if (_EF_QUILLS[taId]) {
+    // Already mounted — update content only
+    const q = _EF_QUILLS[taId];
+    q.enable(true);
+    if (htmlContent && /<\w/.test(htmlContent)) {
+      q.clipboard.dangerouslyPasteHTML(htmlContent);
+    } else {
+      q.setText(htmlContent || '');
+    }
+    return;
+  }
+
+  // First mount: wrap the textarea in a container, insert Quill host before it.
+  const host = document.createElement('div');
+  host.className = 'ef-rich-host';
+  ta.parentNode.insertBefore(host, ta);
+  ta.style.display = 'none';   // hide raw textarea; Quill drives it
+
+  let q;
+  try {
+    q = new Quill(host, {
+      theme: 'snow',
+      modules: { toolbar: EF_QUILL_TOOLBAR },
+      placeholder: ta.getAttribute('placeholder') || '',
+    });
+  } catch (err) {
+    // Fallback: restore textarea visibility so the field is still usable
+    host.remove();
+    ta.style.display = '';
+    console.error('[ef-quill] mount failed for', taId, err);
+    return;
+  }
+
+  // Hydrate initial content
+  if (htmlContent && /<\w/.test(htmlContent)) {
+    q.clipboard.dangerouslyPasteHTML(htmlContent);
+  } else if (htmlContent) {
+    q.setText(htmlContent);
+  }
+
+  // Mirror Quill → textarea so saveFinding() reads the correct value
+  q.on('text-change', () => {
+    const raw = q.root.innerHTML;
+    ta.value = (raw === '<p><br></p>') ? '' : raw;
+  });
+
+  _EF_QUILLS[taId] = q;
+}
+
+// ============================================================
+// Edit Library Finding
+// ============================================================
+let _editFindingId = null;
+
+async function editFinding(id) {
+  _editFindingId = id;
+  const modal = document.getElementById('edit-finding-modal');
+  const errEl = document.getElementById('ef-error');
+  errEl.style.display = 'none';
+
+  // Populate template dropdown from the live template index.
+  await ensureTemplatesIndex();
+  const tplSelect = document.getElementById('ef-template');
+  tplSelect.innerHTML = '';
+  // Sort by display label so the dropdown is alphabetised.
+  const tplEntries = Object.entries(templatesById)
+    .map(([tid, code]) => ({tid: parseInt(tid, 10), code, label: (TEMPLATE_INFO[code] || {}).label || code}))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  for (const {tid, code, label} of tplEntries) {
+    const opt = document.createElement('option');
+    opt.value = tid;
+    opt.textContent = label;
+    tplSelect.appendChild(opt);
+  }
+
+  // Ensure Quill is loaded before opening the modal.
+  try {
+    await _loadQuill();
+  } catch (err) {
+    console.warn('[ef-quill] Quill load failed; falling back to plain textareas:', err);
+  }
+
+  // Fetch the finding and pre-fill the form.
+  try {
+    const resp = await fetch(`/api/findings-library/${id}`, {credentials:'include'});
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const f = await resp.json();
+
+    document.getElementById('ef-id').value = f.id;
+    document.getElementById('ef-title').value = f.title || '';
+    document.getElementById('ef-severity').value = f.default_severity || 'Medium';
+    tplSelect.value = f.template_id || '';
+    document.getElementById('ef-cwe').value = f.cwe || '';
+    document.getElementById('ef-owasp').value = f.owasp_category || '';
+    document.getElementById('ef-cvss-score').value = f.default_cvss_score != null ? f.default_cvss_score : '';
+    document.getElementById('ef-cvss-vector').value = f.default_cvss_vector || '';
+    // Show only non-template tags; template: tags are preserved transparently on save.
+    const visibleTags = (f.tags || []).filter(t => !(typeof t === 'string' && t.startsWith('template:')));
+    document.getElementById('ef-tags').value = visibleTags.join(', ');
+
+    // Mount or update the four rich-text editors.
+    // _mountOrUpdateEditor handles first-mount vs re-open transparently.
+    if (typeof Quill !== 'undefined') {
+      _mountOrUpdateEditor('ef-description', f.description || '');
+      _mountOrUpdateEditor('ef-impact',       f.impact       || '');
+      _mountOrUpdateEditor('ef-remediation',  f.remediation  || '');
+      _mountOrUpdateEditor('ef-references',   f.references   || '');
+    } else {
+      // Quill unavailable (CDN blocked) — fall back to plain textarea values
+      document.getElementById('ef-description').value  = f.description  || '';
+      document.getElementById('ef-impact').value       = f.impact        || '';
+      document.getElementById('ef-remediation').value  = f.remediation   || '';
+      document.getElementById('ef-references').value   = f.references    || '';
+    }
+
+    const saveBtn = document.getElementById('ef-save-btn');
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Changes';
+
+    modal.hidden = false;
+  } catch (err) {
+    alert('Could not load finding: ' + err.message);
+  }
+}
+
+function closeEditModal() {
+  document.getElementById('edit-finding-modal').hidden = true;
+  _editFindingId = null;
+}
+
+async function saveFinding() {
+  const id = _editFindingId;
+  if (!id) return;
+
+  const errEl = document.getElementById('ef-error');
+  errEl.style.display = 'none';
+
+  const saveBtn = document.getElementById('ef-save-btn');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving…';
+
+  const title = document.getElementById('ef-title').value.trim();
+  if (!title) {
+    errEl.textContent = 'Title is required.';
+    errEl.style.display = 'block';
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Changes';
+    return;
+  }
+
+  const tplId = parseInt(document.getElementById('ef-template').value, 10);
+  if (!tplId) {
+    errEl.textContent = 'Please select a template.';
+    errEl.style.display = 'block';
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Changes';
+    return;
+  }
+
+  // Preserve the original template: tags so auto-classify results are not lost.
+  const orig = allFindings.find(f => f.id === id);
+  const tplTags = (orig ? orig.tags || [] : []).filter(t => typeof t === 'string' && t.startsWith('template:'));
+  const userTagInput = document.getElementById('ef-tags').value;
+  const userTags = userTagInput.split(',').map(t => t.trim()).filter(Boolean);
+  const mergedTags = [...new Set([...tplTags, ...userTags])];
+
+  const scoreRaw = document.getElementById('ef-cvss-score').value;
+  const score = scoreRaw !== '' ? parseFloat(scoreRaw) : null;
+
+  const payload = {
+    template_id: tplId,
+    title,
+    description: document.getElementById('ef-description').value.trim(),
+    impact:        document.getElementById('ef-impact').value.trim()        || null,
+    remediation:   document.getElementById('ef-remediation').value.trim()   || null,
+    references:    document.getElementById('ef-references').value.trim()    || null,
+    default_severity:    document.getElementById('ef-severity').value,
+    default_cvss_vector: document.getElementById('ef-cvss-vector').value.trim() || null,
+    default_cvss_score:  (score != null && !isNaN(score)) ? score : null,
+    tags:          mergedTags,
+    cwe:           document.getElementById('ef-cwe').value.trim()   || null,
+    owasp_category:document.getElementById('ef-owasp').value.trim() || null,
+  };
+
+  try {
+    const resp = await fetch(`/api/findings-library/${id}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      let msg = resp.statusText;
+      try {
+        const d = await resp.json();
+        if (typeof d.detail === 'string') msg = d.detail;
+        else if (Array.isArray(d.detail))
+          msg = d.detail.map(e => (e.msg || e.message || JSON.stringify(e))).join('; ');
+        else if (d.detail) msg = JSON.stringify(d.detail);
+      } catch(_){}
+      throw new Error(msg);
+    }
+    const updated = await resp.json();
+
+    // Patch the in-memory array so the grid reflects the change immediately.
+    const idx = allFindings.findIndex(f => f.id === id);
+    if (idx !== -1) allFindings[idx] = {...allFindings[idx], ...updated};
+
+    closeEditModal();
+    filterFindings();
+  } catch (err) {
+    errEl.textContent = 'Save failed: ' + err.message;
+    errEl.style.display = 'block';
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Changes';
+  }
+}
+
+// Close the edit modal when clicking the backdrop.
+document.getElementById('edit-finding-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'edit-finding-modal') closeEditModal();
+});
+
+async function viewFinding(id) {
+  const modal = document.getElementById('finding-detail-modal');
+  const body = document.getElementById('fd-body');
+  const titleEl = document.getElementById('fd-title');
+  titleEl.textContent = 'Loading…';
+  body.innerHTML = '<p class="muted small">Loading…</p>';
+  modal.hidden = false;
+  try {
+    await ensureTemplatesIndex();
+    const resp = await fetch(`/api/findings-library/${id}`, {credentials:'include'});
+    if (!resp.ok) {
+      let detail = resp.statusText;
+      try { detail = (await resp.json()).detail || detail; } catch(_){}
+      throw new Error(detail);
+    }
+    const f = await resp.json();
+    const sev = f.default_severity || 'undefined';
+    const sevClass = getSeverityClass(sev);
+
+    const tplCodes = findingTemplateCodes(f);
+    const tplBadges = tplCodes.map(templateBadgeHTML).join('');
+
+    titleEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0">
+        <span style="font-weight:600">${escapeHtml(f.title)}</span>
+        <span class="badge badge-${sevClass}">${escapeHtml(sev)}</span>
+      </div>`;
+
+    const meta = [];
+    if (f.cwe) meta.push(`<span><strong>CWE:</strong> ${escapeHtml(f.cwe)}</span>`);
+    if (f.owasp_category) meta.push(`<span><strong>OWASP:</strong> ${escapeHtml(f.owasp_category)}</span>`);
+    if (f.created_by_username) meta.push(`<span><strong>Created by:</strong> ${escapeHtml(f.created_by_username)}</span>`);
+    if (f.default_cvss_vector) meta.push(
+      `<span><strong>CVSS:</strong> <code>${escapeHtml(f.default_cvss_vector)}</code>` +
+      (f.default_cvss_score != null ? ' (' + f.default_cvss_score + ')' : '') + '</span>');
+    const visibleTags = (f.tags || []).filter(t =>
+      !(typeof t === 'string' && t.startsWith('template:')));
+    if (visibleTags.length) meta.push(
+      `<span><strong>Tags:</strong> ${visibleTags.map(t => escapeHtml(t)).join(', ')}</span>`);
+
+    function section(label, val) {
+      if (!val || !String(val).trim()) return '';
+      return `<section class="md-section">` +
+             `<h3>${label}</h3>` +
+             `<div class="md-body">${renderMarkdownSafely(val)}</div>` +
+             `</section>`;
+    }
+
+    // Run the placeholder scan in parallel so the "How to apply" panel
+    // can highlight the exact fields the consultant needs to customise.
+    // Non-fatal — if the endpoint is missing we render the generic
+    // walkthrough without per-field callouts.
+    let scan = null;
+    try {
+      const sresp = await fetch(`/api/reports/from-library-preview/${f.id}`, {credentials:'include'});
+      if (sresp.ok) scan = await sresp.json();
+    } catch (_) { /* swallow */ }
+
+    body.innerHTML = `
+      ${meta.length ? `<div class="md-meta">${meta.join('<span class="dot">·</span>')}</div>` : ''}
+      ${section('Description', f.description)}
+      ${section('Impact', f.impact)}
+      ${section('Remediation', f.remediation)}
+      ${section('References', f.references)}
+      ${renderWalkthroughPanel(scan)}
+      <div class="actions" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+        <button class="btn-primary" data-action="use-from-detail" data-id="${f.id}">Use in Report</button>
+        <button class="btn-secondary" data-action="close-detail">Close</button>
+      </div>
+    `;
+  } catch (err) {
+    titleEl.textContent = 'Finding';
+    body.innerHTML = `<p style="color:var(--err-fg)">Failed to load: ${escapeHtml(err.message)}</p>
+      <div class="actions"><button class="btn-secondary" data-action="close-detail">Close</button></div>`;
+  }
+}
+
+function closeFindingDetail() {
+  document.getElementById('finding-detail-modal').hidden = true;
+}
+
+// ----------------------------------------------------------------------
+// Embedded walkthrough panel — always rendered inside the finding detail
+// modal so the consultant sees customisation guidance *before* deciding
+// to use the finding. If the placeholder scan flagged specific fields,
+// we paint a per-field call-out chip so the consultant knows exactly
+// which sentences need to be rewritten for their engagement.
+// ----------------------------------------------------------------------
+function renderWalkthroughPanel(scan) {
+  const _LABEL = {
+    title:           "Title",
+    description:     "Description",
+    impact:          "Impact",
+    remediation:     "Remediation",
+    references:      "References",
+    affected_asset:  "Affected Asset",
+    poc_steps:       "Proof-of-Concept Steps",
+  };
+  const _HINT = {
+    bracketed_prompt:  "Replace this bracketed prompt with engagement-specific content.",
+    curly_placeholder: "Replace this template token with the real value.",
+    todo_marker:       "Address this TODO/FIXME before submitting.",
+    lorem_ipsum:       "Replace placeholder filler text with real prose.",
+    empty_evidence:    "Paste the actual captured request / response — not the label.",
+    template_header:   '"Evidence template" is boilerplate — remove the heading after pasting real evidence.',
+    plain_prompt:      "Replace this guidance sentence with what you actually observed.",
+  };
+
+  // ---- Missing-field warnings ----
+  // The orange "needs your input" prompt now fires ONLY for the
+  // three consultant-fillable fields: Affected Asset, Steps to
+  // Reproduce, and CVSS. Library prose (description / impact /
+  // remediation / references) is pre-filled and signed off
+  // centrally — the consultant doesn't have to rewrite it.
+  const _MISSING_LABEL = {
+    affected_asset: "Affected Asset — paste the specific URL, endpoint, host, IP, or file:line where you found it.",
+    poc_steps:      "Steps to Reproduce — walk a reviewer through how the issue was confirmed in this engagement.",
+    cvss:           "CVSS — enter the vector and score for THIS engagement (use the calculator in the finding editor).",
+    cvss_score:     "CVSS Score — a vector is set but the numeric score is empty. Open the finding and enter or calculate the score.",
+  };
+  let missingHtml = '';
+  if (scan && Array.isArray(scan.missing_fields) && scan.missing_fields.length){
+    missingHtml = `
+      <p class="small" style="margin:14px 0 6px"><strong>
+        ${scan.missing_fields.length} field${scan.missing_fields.length === 1 ? '' : 's'}
+        still need your input:</strong></p>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${scan.missing_fields.map(field => `
+          <div style="border:1px solid var(--medium-line);background:var(--medium-bg);
+                      padding:8px 10px;border-radius:6px">
+            <p class="small" style="margin:0">${escapeHtml(_MISSING_LABEL[field] || field)}</p>
+          </div>`).join('')}
+      </div>`;
+  }
+
+  // ---- Stray-bracket warnings (paranoia / defence-in-depth) ----
+  // The library-sanitiser strips placeholders at seed time, so any
+  // hit here means a custom finding was added by hand with a stray
+  // `[...]` token. Surface it but don't make a big deal of it.
+  let issuesHtml = '';
+  if (scan && scan.field_issues && Object.keys(scan.field_issues).length){
+    const entries = Object.entries(scan.field_issues);
+    issuesHtml = `
+      <p class="small" style="margin:12px 0 6px"><strong>
+        Heads up — bracketed authoring tokens were detected in ${entries.length}
+        library field${entries.length === 1 ? '' : 's'}.</strong>
+        These should have been removed centrally; flag this finding to your
+        team lead so the library entry is cleaned up.</p>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${entries.map(([field, hits]) => {
+          const label = _LABEL[field] || field;
+          const samples = hits.slice(0, 3).map(h =>
+            `<code style="background:var(--surface-3);padding:1px 6px;border-radius:3px;
+                          font-size:11px;margin-right:4px;display:inline-block">${escapeHtml(h.snippet)}</code>`
+          ).join('');
+          const more = hits.length > 3 ? `<span class="muted small"> +${hits.length - 3} more</span>` : '';
+          return `
+            <div style="border:1px solid var(--medium-line);background:var(--medium-bg);
+                        padding:8px 10px;border-radius:6px">
+              <strong style="font-size:12.5px">${escapeHtml(label)}</strong>
+              <div style="margin-top:3px">${samples}${more}</div>
+            </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  return `
+    <section class="md-section walkthrough-panel"
+             style="margin-top:18px;padding:14px 16px;
+                    background:var(--surface-2);border:1px solid var(--border);
+                    border-left:4px solid var(--accent);border-radius:8px">
+      <h3 style="margin:0 0 6px;font-size:14px">Using this finding in your report</h3>
+      <p class="muted small" style="margin:0 0 10px">
+        This is a <strong>curated library finding</strong>. The description,
+        impact, remediation, and references are written generically so they
+        apply to every engagement — you do <strong>not</strong> need to
+        rewrite them. Read through and make sure you understand what is
+        being reported, then customise the three engagement-specific fields
+        below.
+      </p>
+      <ol class="small" style="margin:0 0 0 18px;padding:0;line-height:1.65">
+        <li><strong>Understand the finding.</strong> Skim the description,
+            impact and remediation and confirm they accurately match the
+            issue you observed on this engagement.</li>
+        <li><strong>Set the Affected Asset.</strong> The specific URL,
+            endpoint, IP, host, file:line, or component where the issue
+            was found. This is the only field that says "WHERE" — make
+            sure it points at THIS client's asset.</li>
+        <li><strong>Write the Steps to Reproduce.</strong> A reviewer
+            should be able to follow your walk-through and reproduce the
+            finding without further instructions. Include the request /
+            response captures and any screenshots.</li>
+        <li><strong>Confirm the CVSS score and vector.</strong> The
+            library ships a baseline; adjust it for this engagement's
+            context (network reachability, authentication required, real
+            impact on THIS client's data).</li>
+      </ol>
+      ${missingHtml}
+      ${issuesHtml}
+    </section>`;
+}
+
+function escapeHtml(s) {
+  return (s == null ? '' : String(s)).replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Click the modal backdrop to close; also handle delegated data-action buttons
+// inside the dynamically-rendered body (avoids inline onclick in innerHTML).
+document.getElementById('finding-detail-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'finding-detail-modal') { closeFindingDetail(); return; }
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const action = btn.dataset.action;
+  if (action === 'close-detail')    closeFindingDetail();
+  else if (action === 'use-from-detail') useFinding(parseInt(btn.dataset.id, 10));
+});
+
+// ============================================================
+// Placeholder walkthrough — shown before "Use in Report" when the
+// library finding still contains unresolved template tokens. Returns a
+// Promise<boolean>: true if the user explicitly acknowledged + opted in,
+// false if they cancelled. The acknowledgement checkbox is mandatory so
+// the user can't dismiss the warning by reflex.
+// ============================================================
+const _PW_FIELD_LABELS = {
+  title:           "Title",
+  description:     "Description",
+  impact:          "Impact",
+  remediation:     "Remediation",
+  references:      "References",
+  affected_asset:  "Affected Asset",
+  poc_steps:       "Proof-of-Concept Steps",
+};
+const _PW_KIND_HINT = {
+  bracketed_prompt:  "Replace this bracketed prompt with engagement-specific content.",
+  curly_placeholder: "Replace this template token with the real value.",
+  todo_marker:       "Address this TODO/FIXME before submitting.",
+  lorem_ipsum:       "Replace placeholder filler text with real prose.",
+  empty_evidence:    "Paste the actual request/response captured during testing.",
+};
+
+let _pwResolver = null;
+function showPlaceholderWalkthrough(preview) {
+  return new Promise((resolve) => {
+    _pwResolver = resolve;
+    document.getElementById('pw-finding-title').textContent =
+      preview.title ? `Finding: ${preview.title}` : '';
+    const container = document.getElementById('pw-field-list');
+    const fields = preview.field_issues || {};
+    const entries = Object.entries(fields);
+    if (!entries.length) {
+      // Clean finding (no detected placeholders). Still show the
+      // walkthrough — the user needs to acknowledge that they will
+      // customise evidence for THIS engagement before the insert
+      // happens. This is what turns the library card from a "drop in
+      // and ship" into a deliberate, audit-visible step.
+      container.innerHTML = `
+        <div style="border:1px solid var(--ok-line);background:var(--ok-bg);
+                    color:var(--ok-fg);padding:10px 12px;border-radius:8px;
+                    margin-bottom:8px">
+          <strong>No obvious placeholder tokens detected.</strong>
+          <p class="small" style="margin:4px 0 0">
+            Even so, this is a <em>template</em> finding — the description,
+            impact, and evidence were written generically. You still need
+            to customise it with engagement-specific details before
+            submitting for review.
+          </p>
+        </div>`;
+    } else {
+    container.innerHTML = entries.map(([field, hits]) => {
+      const label = _PW_FIELD_LABELS[field] || field;
+      const hintKinds = Array.from(new Set(hits.map(h => h.kind)));
+      const hints = hintKinds.map(k => _PW_KIND_HINT[k] || 'Unresolved placeholder.').join(' ');
+      const samples = hits.slice(0, 4).map(h =>
+        `<code style="background:var(--surface-3);padding:1px 6px;border-radius:3px;
+                      font-size:11px;margin-right:4px">${escapeHtml(h.snippet)}</code>`
+      ).join('');
+      const more = hits.length > 4 ? `<span class="muted small"> +${hits.length - 4} more</span>` : '';
+      return `
+        <div style="border:1px solid var(--medium-line);background:var(--medium-bg);
+                    padding:10px 12px;border-radius:8px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <strong>${escapeHtml(label)}</strong>
+            <span class="badge badge-medium">${hits.length} unresolved</span>
+          </div>
+          <p class="small" style="margin:4px 0 6px">${escapeHtml(hints)}</p>
+          <div>${samples}${more}</div>
+        </div>`;
+    }).join('');
+    }   // close the `else` branch opened above for the clean-finding path
+
+    const proceedBtn = document.getElementById('pw-proceed-btn');
+    const ack = document.getElementById('pw-acknowledge');
+    ack.checked = false;
+    proceedBtn.disabled = true;
+    ack.onchange = () => { proceedBtn.disabled = !ack.checked; };
+    // Always reset the "don't show again" box to unchecked each time the
+    // modal opens — opting out should be a deliberate decision the user
+    // re-affirms, not a sticky pre-tick.
+    const skipBox = document.getElementById('pw-skip-future');
+    if (skipBox) skipBox.checked = false;
+
+    document.getElementById('placeholder-walkthrough-modal').hidden = false;
+  });
+}
+
+function dismissPlaceholderWalkthrough(accepted) {
+  // If the user accepted AND ticked "don't show again", remember it for
+  // the rest of this browser session. Cancel doesn't touch the flag —
+  // we only persist the preference for an explicit, deliberate accept.
+  if (accepted) {
+    const skip = document.getElementById('pw-skip-future');
+    if (skip && skip.checked) _setWalkthroughDismissed(true);
+  }
+  document.getElementById('placeholder-walkthrough-modal').hidden = true;
+  if (_pwResolver) {
+    _pwResolver(!!accepted);
+    _pwResolver = null;
+  }
+}
+
+// Close on backdrop click — equivalent to Cancel.
+document.getElementById('placeholder-walkthrough-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'placeholder-walkthrough-modal') dismissPlaceholderWalkthrough(false);
+});
+
+// ============================================================
+// "Use in Report" — pick a report the user has edit access to,
+// look up its latest version, then POST the library finding into it.
+// ============================================================
+let _useFindingId = null;
+let _useReportCache = [];
+
+// Before opening the "pick a report" modal, scan the library finding for
+// unresolved placeholder tokens like [DESCRIBE HOW THIS WAS PERFORMED].
+// If any are found, show a walkthrough confirmation modal that lists each
+// unresolved field and forces the consultant to tick "I will customise
+// these before generating" before proceeding. The aim is to make blind
+// copy-paste impossible without a deliberate, audit-visible choice.
+// Session-scoped key. Cleared automatically when the browser/tab closes,
+// so the safety net resumes the next time the user logs in.
+const _PW_SKIP_KEY = 'vapt_walkthrough_skip_session';
+function _walkthroughDismissedForSession(){
+  try { return sessionStorage.getItem(_PW_SKIP_KEY) === '1'; }
+  catch(_) { return false; }
+}
+function _setWalkthroughDismissed(on){
+  try {
+    if (on) sessionStorage.setItem(_PW_SKIP_KEY, '1');
+    else    sessionStorage.removeItem(_PW_SKIP_KEY);
+  } catch(_) {}
+}
+// The topbar "Re-enable finding walkthrough" menu row was removed
+// (the team decided the walkthrough opt-out wasn't worth a
+// dedicated menu item). `_setWalkthroughDismissed` is kept private
+// so future code can still re-enable the walkthrough by clearing
+// sessionStorage if a use-case for it ever comes back.
+
+async function useFinding(id) {
+  // Fast path: user already opted out for this session — skip the modal,
+  // go straight to the report picker. The embedded walkthrough panel
+  // inside the finding-detail modal stays visible regardless, so the
+  // guidance is still discoverable when the user *does* want to read it.
+  if (_walkthroughDismissedForSession()){
+    _useFindingId = id;
+    document.getElementById('use-title').textContent = 'Add finding to report';
+    const list = document.getElementById('use-report-list');
+    list.innerHTML = '<p class="muted small">Loading reports…</p>';
+    document.getElementById('use-search').value = '';
+    document.getElementById('use-report-modal').hidden = false;
+    try {
+      const r = await fetch('/api/reports/accessible', {credentials:'include'});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      _useReportCache = (data.items || []).filter(it =>
+        it.my_access === 'edit' || it.my_access === 'admin');
+      renderUseReportList(_useReportCache);
+    } catch (e){
+      list.innerHTML = `<p style="color:var(--err-fg)">Failed to load: ${escapeHtml(e.message)}</p>`;
+    }
+    return;
+  }
+
+  // Otherwise show the full walkthrough modal — a guidance step every
+  // time. Scan first so the modal can highlight which fields need
+  // customising; failure is non-fatal.
+  let preview = null;
+  try {
+    const r = await fetch(`/api/reports/from-library-preview/${id}`, {credentials:'include'});
+    if (r.ok) preview = await r.json();
+  } catch (_) { /* non-fatal — fall through with preview=null */ }
+  const proceed = await showPlaceholderWalkthrough(preview || {title: '', field_issues: {}, total: 0, ok: true});
+  if (!proceed) return;
+  _useFindingId = id;
+  document.getElementById('use-title').textContent = 'Add finding to report';
+  const list = document.getElementById('use-report-list');
+  list.innerHTML = '<p class="muted small">Loading reports…</p>';
+  document.getElementById('use-search').value = '';
+  document.getElementById('use-report-modal').hidden = false;
+  try {
+    // /api/reports/accessible returns reports the user can see (owner / lead /
+    // shared / admin). We then filter client-side to those with edit access.
+    const r = await fetch('/api/reports/accessible', {credentials:'include'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    _useReportCache = (data.items || []).filter(it =>
+      it.my_access === 'edit' || it.my_access === 'admin');
+    renderUseReportList(_useReportCache);
+  } catch (e){
+    list.innerHTML = `<p style="color:var(--err-fg)">Failed to load: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderUseReportList(items){
+  const list = document.getElementById('use-report-list');
+  if (!items.length){
+    list.innerHTML = '<p class="muted small">No editable reports found. Ask the owner to share one, or create a new report from the Projects page.</p>';
+    return;
+  }
+  list.innerHTML = items.map(it => `
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:10px 12px;border:1px solid var(--border);border-radius:8px;
+                margin-bottom:6px;background:var(--surface)">
+      <div>
+        <strong>${escapeHtml(it.name)}</strong>
+        <div class="muted small">${escapeHtml(it.project_name || '')} · v${escapeHtml(it.current_version)}</div>
+      </div>
+      <button class="btn-primary btn-sm" data-action="add-report" data-id="${it.id}">Add here</button>
+    </div>`).join('');
+}
+
+document.getElementById('use-report-list').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action="add-report"]');
+  if (btn) addFindingToReport(parseInt(btn.dataset.id, 10));
+});
+
+document.getElementById('use-search').addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase();
+  const filtered = !q ? _useReportCache :
+    _useReportCache.filter(r =>
+      (r.name || '').toLowerCase().includes(q) ||
+      (r.project_name || '').toLowerCase().includes(q) ||
+      (r.client_name || '').toLowerCase().includes(q));
+  renderUseReportList(filtered);
+});
+
+async function addFindingToReport(reportId){
+  if (!_useFindingId) return;
+  try {
+    // Look up the report's latest version_id. /api/reports/{id} returns
+    // {report, versions:[{id, version, ...}], ...} sorted by created_at.
+    const r = await fetch(`/api/reports/${reportId}`, {credentials:'include'});
+    if (!r.ok){
+      let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){}
+      throw new Error(d);
+    }
+    const meta = await r.json();
+    const versions = meta.versions || [];
+    if (!versions.length) throw new Error('Report has no versions yet');
+    const latest = versions[versions.length - 1];
+    const r2 = await fetch(
+      `/api/reports/versions/${latest.id}/findings/from-library/${_useFindingId}`,
+      {method:'POST', credentials:'include'},
+    );
+    if (!r2.ok){
+      let d = r2.statusText; try { d = (await r2.json()).detail || d; } catch(_){}
+      throw new Error(d);
+    }
+    closeUseModal();
+    // Hand the user off straight to the editor for the version we just added to
+    window.location = `/reports/versions/${latest.id}/edit`;
+  } catch (e){
+    alert('Failed: ' + e.message);
+  }
+}
+
+function closeUseModal(){
+  document.getElementById('use-report-modal').hidden = true;
+  _useFindingId = null;
+}
+document.getElementById('use-report-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'use-report-modal') closeUseModal();
+});
+
+// ============================================================
+// Auto-classify (admin/senior only — button only rendered for them)
+// ============================================================
+const seedBtn = document.getElementById('seed-btn');
+if (seedBtn){
+  seedBtn.addEventListener('click', async () => {
+    if (!confirm('Load the bundled default findings catalogue?\n\nThis adds ~70 findings covering Web, API, Infra, Mobile, Thick Client, Wi-Fi, Kiosk, OT, AWS, Azure, and Source Code Review. Existing entries with the same title are skipped (we only refresh their template:* tags).')) return;
+    seedBtn.disabled = true;
+    const orig = seedBtn.textContent;
+    seedBtn.textContent = 'Loading…';
+    try {
+      const r = await fetch('/api/findings-library/seed-defaults',
+                            {method:'POST', credentials:'include'});
+      if (!r.ok){
+        let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){}
+        throw new Error(d);
+      }
+      const result = await r.json();
+      alert(`Loaded ${result.created} new findings (${result.skipped} already existed).`);
+      await loadFindings();
+    } catch (e){
+      alert('Failed: ' + e.message);
+    } finally {
+      seedBtn.disabled = false;
+      seedBtn.textContent = orig;
+    }
+  });
+}
+
+const classifyBtn = document.getElementById('classify-btn');
+if (classifyBtn){
+  classifyBtn.addEventListener('click', async () => {
+    if (!confirm('Re-tag every library finding with the report templates it applies to?\n\nThis rewrites the "template:*" entries in each finding\'s tags column. Existing non-template tags are kept.')) return;
+    classifyBtn.disabled = true;
+    const orig = classifyBtn.textContent;
+    classifyBtn.textContent = 'Classifying…';
+    try {
+      const r = await fetch('/api/findings-library/classify-all',
+                            {method:'POST', credentials:'include'});
+      if (!r.ok){
+        let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){}
+        throw new Error(d);
+      }
+      const result = await r.json();
+      alert(`Classified ${result.total_findings} findings · ${result.changed} updated.`);
+      await loadFindings();
+    } catch (e){
+      alert('Failed: ' + e.message);
+    } finally {
+      classifyBtn.disabled = false;
+      classifyBtn.textContent = orig;
+    }
+  });
+}
+
+async function submitForReview(id) {
+  if (!confirm('Submit this draft to the admin review queue?\n\nOnce an admin approves it, every consultant on the team will see it in the library.')) return;
+  try {
+    const resp = await fetch(`/api/findings-library/${id}/submit-for-review`, {
+      method: 'POST', credentials: 'include',
+    });
+    if (resp.ok){
+      await loadFindings();
+    } else {
+      let d = resp.statusText; try { d = (await resp.json()).detail || d; } catch(_){}
+      alert('Failed to submit: ' + d);
+    }
+  } catch (err){
+    alert('Error: ' + err.message);
+  }
+}
+
+async function deleteFinding(id) {
+  if (!confirm('Delete this finding from the library?')) return;
+  
+  try {
+    const resp = await fetch(`/api/findings-library/${id}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    
+    if (resp.ok) {
+      await loadFindings();
+    } else {
+      alert('Error deleting finding');
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+// Event listeners
+document.getElementById('search-input').addEventListener('input', filterFindings);
+document.getElementById('severity-filter').addEventListener('change', filterFindings);
+document.getElementById('template-filter').addEventListener('change', filterFindings);
+document.getElementById('sort-by').addEventListener('change', () => {
+  _persistSortPreference();
+  filterFindings();
+});
+
+// Restore the user's previously-chosen sort BEFORE loading findings so the
+// initial render lands in the order they expect — not the alphabetical
+// default and then a flicker.
+_restoreSortPreference();
+
+// Load on page load
+loadFindings();
+</script>
+{% endblock %}

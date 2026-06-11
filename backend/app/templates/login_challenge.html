@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}2FA - VibeDocs{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <form class="card auth-card" method="post" action="/login/challenge">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <span class="brand-mark" aria-label="VibeDocs">
+        VibeDocs<span class="dot"></span>
+      </span>
+      <div>
+        <h1 style="margin:0;font-size:18px">Two-Factor Authentication</h1>
+        <p class="muted small" style="margin:1px 0 0">Enter the code from your authenticator app</p>
+      </div>
+    </div>
+
+    {% if error %}
+    <div style="background:var(--err-bg);color:var(--err-fg);border:1px solid #fecaca;
+                padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;
+                display:flex;align-items:center;gap:8px">
+      <span>⚠</span>{{ error }}
+    </div>
+    {% endif %}
+
+    <label>
+      Authentication code
+      <input type="text" name="code" inputmode="numeric"
+             autocomplete="one-time-code" required autofocus
+             pattern="[A-Za-z0-9-]{6,12}"
+             placeholder="123456"
+             style="font-family:ui-monospace,monospace;letter-spacing:.2em;font-size:18px">
+    </label>
+    <p class="muted small" style="margin:-4px 0 8px">
+      6-digit TOTP code, or a one-time backup code (format <code>xxxxx-xxxxx</code>).
+    </p>
+
+    <button class="btn-primary lg" type="submit">Verify →</button>
+
+    <div class="divider"></div>
+    <p class="muted small" style="margin:0;text-align:center">
+      Lost your authenticator? Use a backup code, or
+      <a href="/login" style="color:var(--accent)">cancel and try again</a>.
+    </p>
+  </form>
+</div>
+{% endblock %}

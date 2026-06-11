@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Template Editor</h1>
+    <p class="page-sub">Mark placeholder locations in your Word template</p>
+  </div>
+  <div class="actions">
+    <a href="/templates" class="btn-secondary">← Back to Templates</a>
+    <button class="btn-success" id="save-mappings">Save Placeholders</button>
+  </div>
+</div>
+
+<!-- Surfaced when the underlying .docx is missing on disk (a redeploy wiped
+     /data/custom_templates on older builds). Lets the user re-upload the
+     same template without losing the placeholder mappings already saved. -->
+<div id="file-missing-banner" hidden
+     style="margin-top:12px;padding:14px 18px;background:#3b1d1d;
+            border:1px solid #b91c1c;border-radius:8px;color:#fecaca">
+  <strong>This template's Word file is missing on disk.</strong>
+  <p style="margin:6px 0 8px 0;font-size:13px">
+    The placeholders you previously saved are still here, but the original .docx
+    needs to be re-uploaded so the preview and the generator can use it.
+  </p>
+  <form id="reupload-form" enctype="multipart/form-data"
+        style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <input type="file" name="file" accept=".docx" required>
+    <button type="submit" class="btn-primary btn-sm">Re-upload .docx</button>
+    <span id="reupload-status" class="small"></span>
+  </form>
+</div>
+
+<div class="template-editor-layout">
+  <!-- Left: Controls -->
+  <div class="editor-controls">
+    <div class="card">
+      <div class="card-h"><h3>Template Info</h3></div>
+      <div style="padding:12px 16px">
+        <p id="template-name" class="small"></p>
+        <p id="template-type" class="small muted"></p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-h"><h3>Auto-Detected Placeholders</h3></div>
+      <div style="padding:12px 16px">
+        <p class="small" style="color:#4ade80;margin-bottom:12px">✓ System automatically detected placeholders from your Word document</p>
+        <div id="auto-detected-list" style="background:#1a2332;padding:12px;border-radius:6px;border-left:4px solid #4ade80">
+          <p class="small muted">Loading...</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-h"><h3>Required Placeholders</h3></div>
+      <div style="padding:12px 16px">
+        <p class="small muted">Click a button, then click in the document where that field should appear:</p>
+        
+        <div class="placeholder-buttons">
+          <button class="placeholder-btn" data-key="client_name" data-type="text">
+            📌 Client Name
+          </button>
+          <button class="placeholder-btn" data-key="project_title" data-type="text">
+            📌 Project Title
+          </button>
+          <button class="placeholder-btn" data-key="testing_window" data-type="text">
+            📌 Testing Window
+          </button>
+          <button class="placeholder-btn" data-key="executive_summary" data-type="text">
+            📌 Executive Summary
+          </button>
+          <button class="placeholder-btn" data-key="findings_table" data-type="table">
+            📊 Findings Table
+          </button>
+          <button class="placeholder-btn" data-key="findings_detail" data-type="list">
+            📋 Findings Detail
+          </button>
+          <button class="placeholder-btn" data-key="scope_description" data-type="text">
+            📌 Scope Description
+          </button>
+          <button class="placeholder-btn" data-key="methodology" data-type="text">
+            📌 Methodology
+          </button>
+        </div>
+        
+        <p id="current-marking" class="small" style="margin-top:12px;padding:8px;background:var(--accent-soft);border-radius:4px;display:none">
+          <strong>Marking:</strong> <span id="marking-what"></span><br>
+          <em>Click anywhere in the document preview...</em>
+        </p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-h"><h3>Marked Placeholders</h3></div>
+      <ul id="marked-list" style="list-style:none;padding:12px 16px;margin:0">
+        <li class="muted small">None yet</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Right: Document Preview -->
+  <div class="editor-preview">
+    <div class="card">
+      <div class="card-h"><h3>Document Preview</h3></div>
+      <div id="doc-preview" style="padding:20px;background:#fff;color:#000;min-height:600px;overflow-y:auto;max-height:80vh">
+        <p style="text-align:center;color:#666">Loading document...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.template-editor-layout{
+  display:grid;
+  grid-template-columns:360px 1fr;
+  gap:20px;
+  margin-top:20px;
+}
+.editor-controls, .editor-preview{
+  min-height:400px;
+}
+.placeholder-buttons{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-top:12px;
+}
+.placeholder-btn{
+  padding:10px 14px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:6px;
+  cursor:pointer;
+  text-align:left;
+  font-size:13px;
+  transition:all 0.2s;
+  color:var(--text);
+}
+.placeholder-btn:hover{
+  background:var(--surface-2);
+  border-color:var(--accent);
+}
+.placeholder-btn.active{
+  background:var(--accent);
+  color:#fff;
+  border-color:var(--accent);
+}
+#doc-preview p, #doc-preview h1, #doc-preview h2, #doc-preview h3{
+  color:#000 !important;
+}
+.marked-location{
+  background:yellow !important;
+  padding:2px 4px;
+  border:2px solid orange;
+  cursor:pointer;
+  position:relative;
+}
+.marked-location::after{
+  content:attr(data-placeholder);
+  position:absolute;
+  bottom:100%;
+  left:0;
+  background:#333;
+  color:#fff;
+  padding:2px 6px;
+  border-radius:3px;
+  font-size:10px;
+  white-space:nowrap;
+  display:none;
+}
+.marked-location:hover::after{
+  display:block;
+}
+.auto-detected-placeholder{
+  padding:6px 10px;
+  margin:4px 0;
+  background:#0f172a;
+  border-radius:4px;
+  font-size:12px;
+}
+.auto-detected-placeholder code{
+  background:#1e293b;
+  padding:2px 6px;
+  border-radius:3px;
+  color:#4ade80;
+  font-family:monospace;
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script nonce="{{ request.state.csp_nonce }}">
+const TEMPLATE_ID = {{ template_id }};
+let currentTemplate = {{ template | tojson }};
+let placeholderMap = {};
+let currentMarkingKey = null;
+
+// Load template info and document
+async function loadTemplate() {
+  document.getElementById('template-name').textContent = currentTemplate.name;
+  document.getElementById('template-type').textContent = `Type: ${currentTemplate.template_type}`;
+  
+  // Display auto-detected placeholders
+  displayAutoDetectedPlaceholders();
+  
+  // Load existing placeholder mappings
+  if (currentTemplate.placeholder_map) {
+    placeholderMap = currentTemplate.placeholder_map;
+    updateMarkedList();
+  }
+  
+  // Load and render document
+  await loadDocument();
+}
+
+function displayAutoDetectedPlaceholders() {
+  const container = document.getElementById('auto-detected-list');
+  const detected = currentTemplate.placeholder_map || {};
+  
+  if (Object.keys(detected).length === 0) {
+    container.innerHTML = '<p class="small muted">No placeholders detected. Make sure you used {{PLACEHOLDER}} format in your Word document.</p>';
+    return;
+  }
+  
+  container.innerHTML = Object.entries(detected).map(([key, data]) => {
+    const locations = data.locations || [];
+    return `
+      <div class="auto-detected-placeholder">
+        <code>\\{\\{${key.toUpperCase()}\\}\\}</code>
+        <p class="muted" style="margin:4px 0 0;font-size:11px">
+          Found in ${locations.length} location${locations.length > 1 ? 's' : ''}
+        </p>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadDocument() {
+  // If the metadata says the file is gone, surface the re-upload banner
+  // instead of fetching a guaranteed-404.
+  if (currentTemplate && currentTemplate.file_missing) {
+    document.getElementById('file-missing-banner').hidden = false;
+    document.getElementById('doc-preview').innerHTML = `
+      <p style="color:#666;text-align:center">
+        Document preview unavailable — Word file missing on disk.<br>
+        <small>Use the re-upload form above to restore it.</small>
+      </p>
+    `;
+    return;
+  }
+  try {
+    const resp = await fetch(`/api/templates/custom/${TEMPLATE_ID}/download`, {credentials: 'include'});
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+    const arrayBuffer = await resp.arrayBuffer();
+
+    const result = await mammoth.convertToHtml({arrayBuffer: arrayBuffer});
+    document.getElementById('doc-preview').innerHTML = result.value;
+
+    // Apply existing markings
+    applyExistingMarkings();
+
+    // Add click listener to document
+    document.getElementById('doc-preview').addEventListener('click', handleDocumentClick);
+  } catch (err) {
+    // 404 → file gone on disk; show the re-upload banner instead of a dead-end error.
+    if (String(err.message).includes('404')) {
+      document.getElementById('file-missing-banner').hidden = false;
+    }
+    document.getElementById('doc-preview').innerHTML = `
+      <p style="color:red;text-align:center">
+        Error loading document: ${err.message}<br>
+        <small>Template ID: ${TEMPLATE_ID}</small>
+      </p>
+    `;
+  }
+}
+
+// Re-upload handler for the missing-file recovery banner
+(function(){
+  const form = document.getElementById('reupload-form');
+  if (!form) return;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const status = document.getElementById('reupload-status');
+    status.textContent = 'Uploading…';
+    status.style.color = '#fcd34d';
+    try {
+      const fd = new FormData(form);
+      const r = await fetch(`/api/templates/custom/${TEMPLATE_ID}/reupload`, {
+        method: 'POST', body: fd, credentials: 'include',
+      });
+      if (!r.ok) {
+        const e2 = await r.json().catch(() => ({}));
+        throw new Error(e2.detail || r.statusText);
+      }
+      status.textContent = '✓ Restored. Reloading…';
+      status.style.color = '#4ade80';
+      setTimeout(() => location.reload(), 600);
+    } catch (err) {
+      status.textContent = 'Failed: ' + err.message;
+      status.style.color = '#fca5a5';
+    }
+  });
+})();
+
+function applyExistingMarkings() {
+  for (const [key, location] of Object.entries(placeholderMap)) {
+    // Find the text in the document and highlight it
+    // This is simplified - in production you'd use location.paragraph_index
+    const preview = document.getElementById('doc-preview');
+    const paragraphs = preview.querySelectorAll('p');
+    if (location.paragraph_index !== undefined && paragraphs[location.paragraph_index]) {
+      const span = document.createElement('span');
+      span.className = 'marked-location';
+      span.dataset.placeholder = key;
+      span.textContent = location.text_sample || key;
+      paragraphs[location.paragraph_index].innerHTML = span.outerHTML;
+    }
+  }
+}
+
+// Placeholder button clicks
+document.querySelectorAll('.placeholder-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    // Deactivate all
+    document.querySelectorAll('.placeholder-btn').forEach(b => b.classList.remove('active'));
+    
+    // Activate this one
+    btn.classList.add('active');
+    currentMarkingKey = btn.dataset.key;
+    
+    // Show instruction
+    document.getElementById('current-marking').style.display = 'block';
+    document.getElementById('marking-what').textContent = btn.textContent.replace('📌', '').replace('📊', '').replace('📋', '').trim();
+    
+    // Change cursor
+    document.getElementById('doc-preview').style.cursor = 'crosshair';
+  });
+});
+
+function handleDocumentClick(e) {
+  if (!currentMarkingKey) return;
+  
+  e.preventDefault();
+  e.stopPropagation();
+  
+  // Get clicked element
+  const target = e.target;
+  const paragraph = target.closest('p');
+  if (!paragraph) {
+    alert('Please click on a paragraph of text');
+    return;
+  }
+  
+  // Find paragraph index
+  const paragraphs = Array.from(document.querySelectorAll('#doc-preview p'));
+  const paragraphIndex = paragraphs.indexOf(paragraph);
+  
+  // Get text sample
+  const textSample = paragraph.textContent.substring(0, 50);
+  
+  // Save mapping
+  placeholderMap[currentMarkingKey] = {
+    paragraph_index: paragraphIndex,
+    text_sample: textSample,
+    element_html: paragraph.outerHTML
+  };
+  
+  // Visual feedback
+  target.style.background = 'yellow';
+  target.style.border = '2px solid orange';
+  target.dataset.placeholder = currentMarkingKey;
+  
+  // Update list
+  updateMarkedList();
+  
+  // Reset
+  currentMarkingKey = null;
+  document.querySelectorAll('.placeholder-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('current-marking').style.display = 'none';
+  document.getElementById('doc-preview').style.cursor = 'default';
+}
+
+function updateMarkedList() {
+  const list = document.getElementById('marked-list');
+  if (Object.keys(placeholderMap).length === 0) {
+    list.innerHTML = '<li class="muted small">None yet</li>';
+    return;
+  }
+  
+  list.innerHTML = Object.entries(placeholderMap).map(([key, loc]) => `
+    <li style="padding:6px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <strong style="font-size:12px">${key}</strong>
+        <p class="muted small" style="margin:2px 0 0">${loc.text_sample || 'No preview'}</p>
+      </div>
+      <button class="btn-sm btn-danger" onclick="removePlaceholder('${key}')" style="padding:4px 8px;font-size:11px">Remove</button>
+    </li>
+  `).join('');
+}
+
+function removePlaceholder(key) {
+  delete placeholderMap[key];
+  updateMarkedList();
+  // Re-render document to remove highlight
+  loadDocument();
+}
+
+// FIXED: Save mappings with correct payload format
+document.getElementById('save-mappings').addEventListener('click', async () => {
+  const btn = document.getElementById('save-mappings');
+  const originalText = btn.textContent;
+  
+  try {
+    btn.textContent = 'Saving...';
+    btn.disabled = true;
+    
+    // Send placeholderMap directly, not wrapped in {mappings: ...}
+    const resp = await fetch(`/api/templates/custom/${TEMPLATE_ID}/placeholders`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(placeholderMap),  // ← FIXED: Send directly
+      credentials: 'include'
+    });
+    
+    const result = await resp.json();
+    
+    if (resp.ok) {
+      alert('✓ Placeholders saved successfully!');
+      window.location = '/templates';
+    } else {
+      throw new Error(result.detail || result.error || 'Save failed');
+    }
+  } catch (err) {
+    alert('Error saving placeholders: ' + err.message);
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+});
+
+// Initial load
+loadTemplate();
+</script>
+{% endblock %}

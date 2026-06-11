@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}CVSS Calculator{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>CVSS Calculator</h1>
+    <p class="muted small">
+      Pick metric values — the vector and score update live. Use the
+      tabs to switch between CVSS 4.0 (current standard), 3.1 (most
+      legacy clients), and 2.0 (older systems).
+    </p>
+  </div>
+</div>
+
+<div class="cvss-tabs" role="tablist">
+  <button class="cvss-tab active" data-tab="v4" role="tab" aria-selected="true">CVSS 4.0</button>
+  <button class="cvss-tab"        data-tab="v31" role="tab">CVSS 3.1</button>
+  <button class="cvss-tab"        data-tab="v2"  role="tab">CVSS 2.0</button>
+</div>
+
+<section class="card cvss-pane" id="pane-v4">
+  <div id="standalone-cvss-v4"></div>
+</section>
+
+<section class="card cvss-pane is-hidden" id="pane-v31">
+  <div id="standalone-cvss-v31"></div>
+</section>
+
+<section class="card cvss-pane is-hidden" id="pane-v2">
+  <div id="standalone-cvss-v2"></div>
+</section>
+
+<style>
+.cvss-tabs{
+  display:flex;gap:4px;margin:14px 0 10px;
+  border-bottom:1px solid var(--border);
+}
+.cvss-tab{
+  background:transparent;border:0;cursor:pointer;
+  padding:9px 14px;font-size:13px;font-weight:500;color:var(--text-2);
+  border-bottom:2px solid transparent;border-radius:6px 6px 0 0;
+  transition:color .15s, border-color .15s, background .15s;
+}
+.cvss-tab:hover{ color:var(--text); background:var(--surface-2); }
+.cvss-tab.active{
+  color:var(--accent-dark); border-bottom-color:var(--accent-dark); font-weight:600;
+}
+
+/* Layout shared by all three calculators */
+.cvss-wrap{ display:grid;grid-template-columns:1fr 280px;gap:18px;padding:14px 16px; }
+@media(max-width:900px){ .cvss-wrap{ grid-template-columns:1fr } }
+.cvss-metrics{ display:grid;gap:10px; }
+.cvss-metric{ display:grid;gap:6px; }
+.cvss-metric label{ font-size:12px;font-weight:500;color:var(--text-2);margin:0; }
+.cvss-options{ display:flex;flex-wrap:wrap;gap:4px; }
+.cvss-opt{
+  background:var(--surface);color:var(--text);border:1px solid var(--border);
+  padding:4px 10px;font-size:12px;border-radius:6px;cursor:pointer;
+  transition:border-color .12s, background .12s, color .12s;
+}
+.cvss-opt:hover{ border-color:var(--accent-line);background:var(--surface-2); }
+.cvss-opt.active{
+  background:var(--accent-soft);color:var(--accent-dark);
+  border-color:var(--accent-dark);font-weight:600;
+}
+
+.cvss-output{
+  background:var(--surface-2);border:1px solid var(--border);border-radius:8px;
+  padding:14px;display:flex;flex-direction:column;gap:10px;align-self:start;
+}
+.cvss-score-wrap{ display:flex;align-items:baseline;gap:10px; }
+.cvss-score{ font-size:32px;font-weight:700;font-family:ui-monospace,Consolas,monospace;color:var(--text); }
+.cvss-sev{
+  display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;
+  font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+}
+.cvss-sev.sev-critical{ background:var(--critical-bg);color:var(--critical-fg);border:1px solid var(--critical-line) }
+.cvss-sev.sev-high    { background:var(--high-bg);    color:var(--high-fg);    border:1px solid var(--high-line) }
+.cvss-sev.sev-medium  { background:var(--medium-bg);  color:var(--medium-fg);  border:1px solid var(--medium-line) }
+.cvss-sev.sev-low     { background:var(--low-bg);     color:var(--low-fg);     border:1px solid var(--low-line) }
+.cvss-sev.sev-none, .cvss-sev.sev-informational
+                      { background:var(--info-bg);    color:var(--info-fg);    border:1px solid var(--info-line) }
+
+.cvss-vector-wrap{ display:flex;gap:6px; }
+.cvss-vector-wrap input{
+  flex:1;font-family:ui-monospace,Consolas,monospace;font-size:12px;
+}
+</style>
+
+<script src="/static/js/cvss_v4.js?v=20260518"></script>
+<script src="/static/js/cvss_legacy.js?v=20260518"></script>
+<script nonce="{{ request.state.csp_nonce }}">
+// Mount once each. We re-attach mounts every time a tab is shown so empty
+// calculators always have a fresh, interaction-ready state without
+// recreating instances. (Calculators are stateless after construction.)
+mountCvssCalculator(document.getElementById("standalone-cvss-v4"));
+mountCvssV31Calculator(document.getElementById("standalone-cvss-v31"));
+mountCvssV2Calculator(document.getElementById("standalone-cvss-v2"));
+
+const TABS = document.querySelectorAll(".cvss-tab");
+const PANES = {
+  v4:  document.getElementById("pane-v4"),
+  v31: document.getElementById("pane-v31"),
+  v2:  document.getElementById("pane-v2"),
+};
+for (const t of TABS){
+  t.addEventListener("click", () => {
+    TABS.forEach(x => x.classList.toggle("active", x === t));
+    TABS.forEach(x => x.setAttribute("aria-selected", x === t ? "true" : "false"));
+    for (const [k, el] of Object.entries(PANES)){
+      el.classList.toggle("is-hidden", k !== t.dataset.tab);
+    }
+  });
+}
+</script>
+{% endblock %}

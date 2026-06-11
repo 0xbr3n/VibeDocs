@@ -1,0 +1,110 @@
+# PT Risk Register tracker column mappings.
+# Maps canonical internal field names to header aliases that may appear in a
+# VibeDocs VAPT Excel tracker. Headers are matched after normalisation
+# (lowercase, whitespace collapsed, "_-/" replaced with space).
+# Add new aliases here when you encounter a tracker variant -- no code changes needed.
+
+sheet_candidates:
+  - Risk Register
+  - Risk_Register
+  - RiskRegister
+  - Findings
+  - VAPT Findings
+  - Issue Tracker
+  - Vulnerabilities
+
+fields:
+  finding_id:
+    aliases: [ID, Finding ID, Ref, Reference, "S/N", "S.No", No, "No.", Number]
+    required: false
+  title:
+    aliases: [Title, Finding, Finding Title, Vulnerability, Issue, Name]
+    required: true
+  description:
+    aliases: [Description, Details, Finding Description, Issue Description, Observation]
+    required: true
+  impact:
+    aliases: [Impact, Business Impact, Risk, Risk Impact, Consequence]
+    required: false
+  steps_to_reproduce:
+    aliases: [Steps to Reproduce, Steps, Reproduction Steps, PoC, "Proof of Concept", "Proof-of-Concept", Reproduction]
+    required: false
+  remediation:
+    aliases: [Remediation, Recommendation, Recommendations, Fix, Mitigation, Resolution]
+    required: false
+  references:
+    aliases: [References, Reference, Links, External References, See Also]
+    required: false
+  cvss_vector:
+    aliases:
+      - CVSS 4.0 Vector
+      - CVSS v4.0 Vector
+      - CVSS Vector
+      - CVSS4 Vector
+      - Vector
+      - CVSS String
+    required: false
+  cvss_score:
+    aliases:
+      - CVSS 4.0 Score
+      - CVSS v4.0 Score
+      - CVSS 4.0 Base Score
+      - CVSS Score
+      - CVSS
+      - Base Score
+      - Score
+    required: false
+  severity:
+    aliases: [Severity, Risk Rating, Rating, Risk Level, Priority]
+    required: false
+  affected_asset:
+    aliases:
+      - Affected Asset
+      - Affected Assets
+      - Asset
+      - Host
+      - URL
+      - Endpoint
+      - Affected URL
+      - Affected Host
+      - Target
+    required: false
+  status:
+    aliases: [Status, State, Finding Status]
+    required: false
+  cwe:
+    aliases: [CWE, CWE ID, CWE-ID]
+    required: false
+  owasp:
+    aliases: [OWASP, OWASP Category, OWASP Top 10, Category]
+    required: false
+
+severity_map:
+  critical: Critical
+  crit: Critical
+  high: High
+  hi: High
+  medium: Medium
+  med: Medium
+  moderate: Medium
+  low: Low
+  lo: Low
+  info: Informational
+  informational: Informational
+  none: Informational
+  "n/a": Informational
+
+status_map:
+  open: Open
+  new: Open
+  closed: Closed
+  resolved: Closed
+  fixed: Closed
+  "risk accepted": "Risk Accepted"
+  accepted: "Risk Accepted"
+  "false positive": "False Positive"
+  fp: "False Positive"
+  "n/a": "N/A"
+  "not applicable": "N/A"
+  "in remediation": "In Remediation"
+  "in progress": "In Remediation"

@@ -1,0 +1,2195 @@
+/* ============================================================
+ * VAPT Reporter — Design System
+ * Ported from the desktop demo so the live app matches.
+ * Supports light (default) and dark themes via [data-theme].
+ * ============================================================ */
+
+:root{
+  /* ====== LIGHT THEME (default) — softened for eye comfort ======
+     Previously this was paper-white (#fafafa) which is glaring in a
+     dark room. Backed off to a warm off-white with a hint of stone so
+     the page no longer feels like a flashlight. */
+  --bg:#ecedef;
+  --surface:#f5f6f8;
+  --surface-2:#ebedf0;
+  --surface-3:#dde0e5;
+  /* Alias used by the topbar dropdowns and a couple of legacy widgets.
+   * Without this fallback the dropdown opens but renders as transparent
+   * against the page, which makes the bell / theme / user-menu buttons
+   * appear "unclickable". Keep in sync per-theme below. */
+  --card-bg:#ffffff;
+  --border:#d1d5db;
+  --border-2:#b6bcc4;
+  --border-strong:#6b7280;
+  --text:#1f2937;
+  --text-2:#52606d;
+  --text-3:#7a8493;
+  --text-4:#b6bcc4;
+  --accent:#7C5CFC;
+  --accent-dark:#5B3FD6;
+  --accent-soft:#ECE7FF;
+  --accent-line:rgba(124,92,252,.4);
+  /* Severity palette (light). Dark-red Critical, Red High, Orange Medium,
+     Yellow Low, Blue Informational — with ~12% alpha backgrounds so the
+     chips integrate visually across light + dark surfaces without needing
+     two separate hue sets. */
+  --critical-bg:rgba(127,29,29,.14); --critical-fg:#7f1d1d; --critical-line:rgba(127,29,29,.35);
+  --high-bg:rgba(220,38,38,.12);     --high-fg:#dc2626;     --high-line:rgba(220,38,38,.3);
+  --medium-bg:rgba(249,115,22,.14);  --medium-fg:#c2410c;   --medium-line:rgba(249,115,22,.32);
+  --low-bg:rgba(234,179,8,.16);      --low-fg:#a16207;      --low-line:rgba(234,179,8,.35);
+  --info-bg:rgba(37,99,235,.12);     --info-fg:#1d4ed8;     --info-line:rgba(37,99,235,.3);
+  --ok-fg:#15803d; --ok-bg:#dcfce7; --ok-line:#bbf7d0;
+  --warn-fg:#a16207; --warn-bg:#fef3c7;
+  --err-fg:#b91c1c; --err-bg:#fee2e2;
+  --shadow-sm:0 1px 2px rgba(16,24,40,.04);
+  --shadow:0 4px 12px rgba(16,24,40,.06), 0 1px 2px rgba(16,24,40,.03);
+  --shadow-lg:0 16px 48px rgba(16,24,40,.12), 0 4px 12px rgba(16,24,40,.06);
+  --radius:8px;
+  --radius-lg:12px;
+
+  /* Legacy aliases (so existing templates still resolve their vars) */
+  --muted: var(--text-3);
+  --accent-2: var(--accent);
+  --green: var(--accent);
+  --danger: var(--err-fg);
+  /* Legacy sev-* aliases — kept stable RGB so any place that uses them
+     (e.g. the Word severity chart) stays consistent across light/dark. */
+  --sev-critical: #7f1d1d;   /* dark red */
+  --sev-high:     #dc2626;   /* red */
+  --sev-medium:   #f97316;   /* orange */
+  --sev-low:      #eab308;   /* yellow */
+  --sev-info:     #2563eb;   /* blue */
+}
+
+/* Hide a block regardless of any inline `display:*` rule on the element.
+   We use this where toggle code competes with inline styles for `display`. */
+.is-hidden{ display:none !important; }
+
+/* Small pill used in listings for tag-like metadata (version, owner labels,
+   template name on the project page).  Designed to be unobtrusive — sits in
+   line with the title text without dominating it. */
+.tpl-pill{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:1px 8px;border-radius:999px;
+  font-size:11px;font-weight:500;letter-spacing:.01em;
+  background:var(--surface-3);color:var(--text-2);
+  border:1px solid var(--border);
+}
+
+/* Hover affordance for the report rows on the project detail page. */
+a.report-row:hover > div{
+  border-color:var(--accent-line) !important;
+  background:var(--surface-2) !important;
+}
+
+/* ============================================================
+   FUTURISTIC THEME POLISH
+   Refined buttons, inputs, focus rings, micro-animations. Stays under the
+   reduced-motion guard at the top of the file. Designed to feel like a
+   terminal-meets-modern-SaaS, not a toy hacker skin.
+   ============================================================ */
+
+/* --- Buttons --------------------------------------------------
+   Terminal-style high-contrast buttons. The previous design used a
+   solid accent-green gradient with white-ish text which was hard to
+   read in the light theme. Now: dark "console" surface, bright
+   accent-coloured text in a slightly-monospaced font, accent
+   border, optional glow on hover. Reads cleanly on every theme.
+   ============================================================ */
+.btn-primary, .btn-secondary, .btn-danger{
+  position:relative;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:7px 14px;
+  font-family:"Segoe UI Variable Text","Segoe UI",-apple-system,sans-serif;
+  font-size:13px;font-weight:600;line-height:1.2;
+  border-radius:8px;border:1px solid transparent;
+  cursor:pointer;letter-spacing:.02em;
+  transition:transform .12s ease, box-shadow .18s ease,
+             background .18s ease, border-color .18s ease, color .18s ease;
+  user-select:none;
+}
+
+/* ----- Primary: bright accent text on dark "console" surface ----- */
+.btn-primary{
+  /* Solid dark surface so the bright text pops, regardless of theme.
+     Two stops keep it from looking flat. */
+  background:linear-gradient(180deg, #1c2520 0%, #11150f 100%);
+  color:var(--accent);
+  border-color:var(--accent-dark);
+  text-shadow:0 0 6px rgba(124,92,252,.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 1px 2px rgba(0,0,0,.25);
+}
+/* On light/solarized themes the dark button surface stays the same — the
+   contrast against the page is what we want — but we lift the text a touch
+   so it doesn't look the exact same as the accent line. */
+html[data-theme="light"] .btn-primary,
+html[data-theme="solarized"] .btn-primary{ color:#a3d23a; }
+.btn-primary:hover{
+  transform:translateY(-1px);
+  background:linear-gradient(180deg, #233224 0%, #161d12 100%);
+  border-color:var(--accent);
+  color:#d6f08a;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    0 0 18px rgba(124,92,252,.45),
+    0 0 0 1px var(--accent);
+  text-shadow:0 0 10px rgba(124,92,252,.7);
+}
+.btn-primary:active{
+  transform:translateY(0);
+  box-shadow:inset 0 1px 4px rgba(0,0,0,.4), 0 0 0 1px var(--accent-dark);
+}
+.btn-primary:focus-visible{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(124,92,252,.45), 0 0 0 1px var(--accent);
+}
+
+/* ----- Secondary: ghost outline that lifts on hover ----- */
+.btn-secondary{
+  background:transparent;
+  color:var(--text);
+  border-color:var(--border-2);
+}
+.btn-secondary:hover{
+  background:var(--surface-2);
+  border-color:var(--accent);
+  color:var(--accent-dark);
+  transform:translateY(-1px);
+  box-shadow:0 0 10px rgba(124,92,252,.18);
+}
+html[data-theme="dark"] .btn-secondary:hover,
+html[data-theme="midnight"] .btn-secondary:hover,
+html[data-theme="forest"] .btn-secondary:hover,
+html[data-theme="dracula"] .btn-secondary:hover{
+  color:var(--accent);
+}
+.btn-secondary:active{ transform:translateY(0); }
+.btn-secondary:focus-visible{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(124,92,252,.25);
+}
+
+/* ----- Danger: red-on-dark mirror of the primary ----- */
+.btn-danger{
+  background:linear-gradient(180deg, #251313 0%, #150909 100%);
+  color:#fca5a5;
+  border-color:#7f1d1d;
+  text-shadow:0 0 6px rgba(220,38,38,.35);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 1px 2px rgba(0,0,0,.25);
+}
+.btn-danger:hover{
+  transform:translateY(-1px);
+  border-color:#dc2626;
+  color:#fda4a4;
+  background:linear-gradient(180deg, #2f1818 0%, #1a0c0c 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    0 0 18px rgba(220,38,38,.4),
+    0 0 0 1px #dc2626;
+  text-shadow:0 0 10px rgba(220,38,38,.6);
+}
+.btn-danger:active{
+  transform:translateY(0);
+  box-shadow:inset 0 1px 4px rgba(0,0,0,.4), 0 0 0 1px #7f1d1d;
+}
+.btn-danger:focus-visible{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(220,38,38,.35), 0 0 0 1px #dc2626;
+}
+
+.btn-sm{padding:4px 10px;font-size:12px;border-radius:6px}
+.btn-primary.lg{padding:10px 16px;font-size:14px;font-weight:600}
+
+/* Disabled states */
+.btn-primary[disabled], .btn-secondary[disabled], .btn-danger[disabled]{
+  opacity:.55;cursor:not-allowed;transform:none !important;box-shadow:none;
+}
+
+/* --- Inputs / textareas / selects -----------------------------
+   Match BOTH bare <input> (no type attr defaults to "text") and the
+   explicit common types. Without the `:not([type])` arm the Title /
+   Affected asset inputs in the finding card stayed at the
+   browser-default white look. */
+input:not([type]),
+input[type="text"], input[type="search"], input[type="email"],
+input[type="password"], input[type="number"], input[type="date"],
+input[type="time"], input[type="datetime-local"], input[type="url"],
+input[type="tel"], textarea, select{
+  width:100%;
+  padding:7px 10px;
+  font-family:inherit;font-size:13.5px;line-height:1.4;color:var(--text);
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:7px;
+  transition:border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+textarea{min-height:64px;resize:vertical}
+input:focus, textarea:focus, select:focus{
+  outline:none;
+  border-color:var(--accent-dark);
+  box-shadow:0 0 0 3px rgba(124,92,252,.18);
+  background:var(--surface);
+}
+/* Read-only mirror of the disabled visuals — for inputs that are temporarily
+   gated by the new finding-card edit toggle. We use this instead of
+   `disabled` on Quill-managed textareas so the form still submits values. */
+input[readonly]:not([type="checkbox"]), textarea[readonly]{
+  background:var(--surface-2); color:var(--text-2); cursor:not-allowed;
+  border-style:dashed;
+}
+input::placeholder, textarea::placeholder{ color:var(--text-3); opacity:1 }
+input[disabled], textarea[disabled], select[disabled]{
+  background:var(--surface-2); color:var(--text-3); cursor:not-allowed;
+}
+
+/* file inputs — Chrome / Firefox both ignore most styles, but we can at
+   least tone down the button "Choose file" appearance via a container */
+input[type="file"]{
+  padding:5px 8px;background:var(--surface-2);border:1px dashed var(--border);
+  border-radius:7px;color:var(--text-2);font-size:12.5px;cursor:pointer;
+}
+input[type="file"]:hover{border-color:var(--accent-line)}
+
+/* --- Cards: subtle accent edge that lights on hover ----------- */
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);border-radius:12px;
+  box-shadow:var(--shadow-sm);
+  overflow:hidden;
+  transition:border-color .2s ease, box-shadow .2s ease;
+}
+.card:hover{
+  border-color:rgba(124,92,252,.18);
+  box-shadow:0 6px 24px rgba(0,0,0,.07);
+}
+.card-h{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:13px 16px;
+  border-bottom:1px solid var(--border);
+  background:linear-gradient(180deg, var(--surface), var(--surface-2));
+}
+.card-h h2{margin:0;font-size:14px;font-weight:600;letter-spacing:.005em}
+
+/* --- Topbar accent stripe ----------------------------------- */
+.topbar{
+  /* slim accent line at the bottom of the topbar so it reads as "computed" */
+  box-shadow:0 1px 0 var(--border), 0 0 24px rgba(124,92,252,.04);
+}
+.topbar::after{
+  content:""; position:absolute; left:0; right:0; bottom:-1px; height:1px;
+  background:linear-gradient(90deg, transparent, rgba(124,92,252,.4), transparent);
+  pointer-events:none;
+}
+
+/* Nav link hover gets a subtle underline glow */
+.topbar nav a{transition:background .15s ease, color .15s ease, box-shadow .15s ease}
+.topbar nav a:hover{box-shadow:inset 0 -2px 0 var(--accent-line)}
+.topbar nav a.active{
+  box-shadow:inset 0 -2px 0 var(--accent-dark);
+  background:transparent;
+}
+
+/* --- Loading shimmer (utility) ------------------------------- */
+@keyframes vapt-shimmer{
+  0%{background-position:-400px 0}
+  100%{background-position:400px 0}
+}
+.shimmer{
+  background:linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size:800px 100%;
+  animation:vapt-shimmer 1.4s linear infinite;
+  color:transparent !important;
+}
+
+/* --- Modal entrance animation -------------------------------- */
+@keyframes vapt-modal-in{
+  from{opacity:0; transform:translateY(-6px) scale(.985);}
+  to  {opacity:1; transform:none;}
+}
+.modal:not([hidden]) .modal-card{
+  animation:vapt-modal-in .18s ease-out both;
+}
+
+/* --- Data tables (the project + reports lists) --------------- */
+table.data{ width:100%; border-collapse:separate; border-spacing:0 }
+table.data thead th{
+  text-align:left; font-size:11px; text-transform:uppercase;
+  letter-spacing:.06em; color:var(--text-2);
+  padding:10px 14px; border-bottom:1px solid var(--border);
+  background:var(--surface-2); position:sticky; top:0; z-index:1;
+}
+table.data tbody td{
+  padding:11px 14px; border-bottom:1px solid var(--border);
+  vertical-align:top;
+}
+table.data tbody tr:hover td{ background:var(--surface-2); }
+table.data tbody tr:last-child td{ border-bottom:0 }
+
+/* ====== DARK THEME override ====== */
+html[data-theme="dark"]{
+  --bg:#0a0c10;
+  --surface:#13161d;
+  --surface-2:#191d26;
+  --surface-3:#222732;
+  --card-bg:#1a1f29;
+  --border:#262b36;
+  --border-2:#363c49;
+  --border-strong:#5a6273;
+  --text:#e6e9ef;
+  --text-2:#9ca3af;
+  --text-3:#6b7280;
+  --text-4:#4b5563;
+  --accent:#a3d23a;
+  --accent-dark:#7C5CFC;
+  --accent-soft:rgba(124,92,252,.12);
+  --accent-line:rgba(124,92,252,.35);
+  /* Dark-mode severity palette: same hue rotation as light, lighter
+     foreground so the chip text stays readable on the dark surfaces. */
+  --critical-bg:rgba(127,29,29,.28);  --critical-fg:#fca5a5; --critical-line:rgba(220,38,38,.45);
+  --high-bg:rgba(220,38,38,.22);      --high-fg:#fda4a4;     --high-line:rgba(220,38,38,.4);
+  --medium-bg:rgba(249,115,22,.18);   --medium-fg:#fdba74;   --medium-line:rgba(249,115,22,.35);
+  --low-bg:rgba(234,179,8,.22);       --low-fg:#fde047;      --low-line:rgba(234,179,8,.4);
+  --info-bg:rgba(37,99,235,.18);      --info-fg:#93c5fd;     --info-line:rgba(37,99,235,.35);
+  --ok-fg:#86efac; --ok-bg:rgba(34,197,94,.15); --ok-line:rgba(34,197,94,.3);
+  --warn-fg:#fcd34d; --warn-bg:rgba(245,158,11,.15);
+  --err-fg:#fca5a5;  --err-bg:rgba(239,68,68,.15);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.3);
+  --shadow:0 4px 12px rgba(0,0,0,.4), 0 1px 2px rgba(0,0,0,.3);
+  --shadow-lg:0 16px 48px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.35);
+}
+
+/* ============================================================
+   ADDITIONAL THEMES
+   Each is an override on top of the default light tokens. The
+   topbar's "cycle theme" button rotates through:
+       light -> dark -> midnight -> dracula -> solarized -> forest
+   Add another by following the same shape — only override the
+   tokens you want to change; the rest fall back to :root.
+   ============================================================ */
+
+/* --- MIDNIGHT — true-black OLED-friendly accent green */
+html[data-theme="midnight"]{
+  --bg:#000000;
+  --surface:#070809;
+  --surface-2:#0e1013;
+  --surface-3:#181b21;
+  --card-bg:#11151c;
+  --border:#1e232b;
+  --border-2:#2a313c;
+  --border-strong:#586172;
+  --text:#e6e9ef;
+  --text-2:#9aa3b2;
+  --text-3:#6b7587;
+  --text-4:#4a5363;
+  --accent:#a3d23a;
+  --accent-dark:#7C5CFC;
+  --accent-soft:rgba(124,92,252,.10);
+  --accent-line:rgba(124,92,252,.30);
+  --critical-bg:rgba(127,29,29,.32);  --critical-fg:#fda4a4; --critical-line:rgba(220,38,38,.5);
+  --high-bg:rgba(220,38,38,.22);      --high-fg:#fca5a5;     --high-line:rgba(220,38,38,.4);
+  --medium-bg:rgba(249,115,22,.18);   --medium-fg:#fdba74;   --medium-line:rgba(249,115,22,.35);
+  --low-bg:rgba(234,179,8,.22);       --low-fg:#fde047;      --low-line:rgba(234,179,8,.4);
+  --info-bg:rgba(37,99,235,.18);      --info-fg:#93c5fd;     --info-line:rgba(37,99,235,.35);
+  --ok-fg:#86efac; --ok-bg:rgba(34,197,94,.15); --ok-line:rgba(34,197,94,.3);
+  --warn-fg:#fcd34d; --warn-bg:rgba(245,158,11,.15);
+  --err-fg:#fca5a5;  --err-bg:rgba(239,68,68,.15);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.6);
+  --shadow:0 4px 12px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.4);
+  --shadow-lg:0 16px 48px rgba(0,0,0,.7), 0 4px 12px rgba(0,0,0,.5);
+}
+
+/* --- DRACULA — purple/pink accents on a deep slate */
+html[data-theme="dracula"]{
+  --bg:#282a36;
+  --surface:#22232e;
+  --surface-2:#2b2d3a;
+  --surface-3:#323543;
+  --card-bg:#2c2e3d;
+  --border:#3a3d4a;
+  --border-2:#4e5160;
+  --border-strong:#6272a4;
+  --text:#f8f8f2;
+  --text-2:#bdbdce;
+  --text-3:#7e85a3;
+  --text-4:#5d6481;
+  --accent:#bd93f9;          /* dracula purple */
+  --accent-dark:#a87cff;
+  --accent-soft:rgba(189,147,249,.14);
+  --accent-line:rgba(189,147,249,.4);
+  --critical-bg:rgba(255,85,85,.22); --critical-fg:#ff8a8a; --critical-line:rgba(255,85,85,.45);
+  --high-bg:rgba(255,121,198,.18);   --high-fg:#ff79c6;     --high-line:rgba(255,121,198,.4);
+  --medium-bg:rgba(255,184,108,.22); --medium-fg:#ffb86c;   --medium-line:rgba(255,184,108,.4);
+  --low-bg:rgba(241,250,140,.22);    --low-fg:#f1fa8c;      --low-line:rgba(241,250,140,.4);
+  --info-bg:rgba(139,233,253,.22);   --info-fg:#8be9fd;     --info-line:rgba(139,233,253,.4);
+  --ok-fg:#50fa7b; --ok-bg:rgba(80,250,123,.15); --ok-line:rgba(80,250,123,.3);
+  --warn-fg:#f1fa8c; --warn-bg:rgba(241,250,140,.15);
+  --err-fg:#ff5555;  --err-bg:rgba(255,85,85,.15);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.35);
+  --shadow:0 4px 12px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.3);
+  --shadow-lg:0 16px 48px rgba(0,0,0,.6), 0 4px 12px rgba(0,0,0,.4);
+}
+
+/* --- SOLARIZED LIGHT — muted, low-contrast, easy on the eyes */
+html[data-theme="solarized"]{
+  --bg:#fdf6e3;
+  --surface:#f7eed2;
+  --surface-2:#ede4c9;
+  --surface-3:#e0d7bf;
+  --card-bg:#fffbe9;
+  --border:#d2c8ad;
+  --border-2:#b9af94;
+  --border-strong:#93a1a1;
+  --text:#073642;
+  --text-2:#586e75;
+  --text-3:#839496;
+  --text-4:#93a1a1;
+  --accent:#268bd2;          /* solarized blue */
+  --accent-dark:#1f6f9f;
+  --accent-soft:rgba(38,139,210,.10);
+  --accent-line:rgba(38,139,210,.35);
+  --critical-bg:rgba(220,50,47,.14); --critical-fg:#dc322f; --critical-line:rgba(220,50,47,.35);
+  --high-bg:rgba(203,75,22,.14);     --high-fg:#cb4b16;     --high-line:rgba(203,75,22,.35);
+  --medium-bg:rgba(181,137,0,.14);   --medium-fg:#b58900;   --medium-line:rgba(181,137,0,.35);
+  --low-bg:rgba(133,153,0,.16);      --low-fg:#859900;      --low-line:rgba(133,153,0,.4);
+  --info-bg:rgba(38,139,210,.14);    --info-fg:#268bd2;     --info-line:rgba(38,139,210,.35);
+  --ok-fg:#586e0c; --ok-bg:rgba(133,153,0,.18); --ok-line:rgba(133,153,0,.4);
+  --warn-fg:#b58900; --warn-bg:rgba(181,137,0,.18);
+  --err-fg:#dc322f;  --err-bg:rgba(220,50,47,.16);
+}
+
+/* --- FOREST — deep green & teal for long editing sessions */
+html[data-theme="forest"]{
+  --bg:#0c1612;
+  --surface:#0f1c17;
+  --surface-2:#142420;
+  --surface-3:#1c2f29;
+  --card-bg:#152a22;
+  --border:#1f3a32;
+  --border-2:#2e5048;
+  --border-strong:#5a8275;
+  --text:#e2efe8;
+  --text-2:#9cb9af;
+  --text-3:#6d8c83;
+  --text-4:#4c6960;
+  --accent:#74c69d;          /* fresh moss */
+  --accent-dark:#52b788;
+  --accent-soft:rgba(116,198,157,.12);
+  --accent-line:rgba(116,198,157,.35);
+  --critical-bg:rgba(127,29,29,.30); --critical-fg:#fca5a5; --critical-line:rgba(220,38,38,.45);
+  --high-bg:rgba(220,38,38,.22);     --high-fg:#fca5a5;     --high-line:rgba(220,38,38,.4);
+  --medium-bg:rgba(245,158,11,.20);  --medium-fg:#fcd34d;   --medium-line:rgba(245,158,11,.4);
+  --low-bg:rgba(234,179,8,.22);      --low-fg:#fde047;      --low-line:rgba(234,179,8,.4);
+  --info-bg:rgba(56,189,248,.22);    --info-fg:#7dd3fc;     --info-line:rgba(56,189,248,.4);
+  --ok-fg:#a7f3d0; --ok-bg:rgba(167,243,208,.16); --ok-line:rgba(167,243,208,.3);
+  --warn-fg:#fcd34d; --warn-bg:rgba(245,158,11,.15);
+  --err-fg:#fda4af;  --err-bg:rgba(244,63,94,.15);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.45);
+  --shadow:0 4px 12px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.35);
+  --shadow-lg:0 16px 48px rgba(0,0,0,.65), 0 4px 12px rgba(0,0,0,.45);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font-family:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,"Helvetica Neue",Arial,sans-serif;
+  font-size:13.5px;line-height:1.45;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  /* Subtle ambient backdrop. The two radial gradients give the page a soft
+     hacker-terminal "scanlight" feel without distracting from content. The
+     grid SVG below adds a faint topographic texture. Both disabled when
+     the user has uploaded their own background. */
+}
+body:not(.has-bg){
+  background-image:
+    radial-gradient(1200px 600px at 8% -10%, rgba(124,92,252,.06), transparent 60%),
+    radial-gradient(900px 500px at 95% 110%, rgba(99,102,241,.05), transparent 60%),
+    linear-gradient(180deg, transparent, transparent 22px,
+                            rgba(127,127,127,.025) 22px,
+                            rgba(127,127,127,.025) 23px);
+  background-attachment:fixed;
+}
+html[data-theme="dark"] body:not(.has-bg){
+  background-image:
+    radial-gradient(1200px 600px at 8% -10%, rgba(124,92,252,.10), transparent 60%),
+    radial-gradient(900px 500px at 95% 110%, rgba(99,102,241,.08), transparent 60%),
+    linear-gradient(180deg, transparent, transparent 22px,
+                            rgba(255,255,255,.025) 22px,
+                            rgba(255,255,255,.025) 23px);
+}
+body{min-height:100vh}
+code,kbd,pre,samp{font-family:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace}
+a{color:var(--accent-dark);text-decoration:none;transition:color .15s ease}
+a:hover{text-decoration:underline}
+
+/* ===== Reduced-motion respect ===== */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after { animation-duration:.001ms !important; transition-duration:.001ms !important; }
+}
+
+/* ====== TOPBAR ====== */
+.topbar{
+  /* z-index:60 keeps the topbar visible above regular page content. Modals
+   * are now at z-index:10000 (above topbar and notes widget) so the topbar
+   * is correctly hidden behind the modal backdrop when a modal is open. */
+  position:sticky;top:0;z-index:60;background:var(--surface);
+  border-bottom:1px solid var(--border);height:52px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;gap:18px;
+}
+.topbar .brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14px;letter-spacing:-.01em}
+.topbar .brand strong{color:var(--text)}
+.topbar .brand .brand-mark{
+  /* Default brand-mark (back-compat). New brand-mark replaces this on
+     the topbar but we keep the gradient-square style around so other
+     places that say <span class="brand-mark">…</span> still render. */
+  width:24px;height:24px;border-radius:6px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-dark));
+  color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700;
+  font-family:ui-monospace,Consolas,monospace;
+  box-shadow:inset 0 -1px 0 rgba(0,0,0,.1), 0 1px 2px rgba(124,92,252,.4);
+}
+
+/* generic wordmark: white "VibeDocs" with the trademark green dot.
+   On dark themes the lettering is white; on light it's the page text colour
+   for contrast against the topbar surface. Used wherever the old single-
+   character "V" badge appeared (topbar + auth shells). */
+.brand-mark{
+  /* override the gradient square */
+  width:auto !important;height:auto !important;border-radius:0 !important;
+  background:transparent !important;box-shadow:none !important;
+  display:inline-flex !important;align-items:center;gap:2px;
+  color:var(--text) !important;
+  font-family:"Segoe UI Variable Display","Segoe UI",Arial,sans-serif !important;
+  font-weight:800 !important;font-size:18px !important;letter-spacing:-.02em;
+  line-height:1;padding:0 !important;
+}
+html[data-theme="dark"] .brand-mark{ color:#fff !important; }
+.brand-mark .dot{
+  display:inline-block;width:7px;height:7px;border-radius:50%;
+  background:var(--accent);margin-left:1px;align-self:flex-end;margin-bottom:3px;
+  box-shadow:0 0 8px rgba(124,92,252,.55);
+}
+/* Auth-shell variant: bigger logo on the login / forgot-password / etc. cards */
+.auth-card .brand-mark{ font-size:22px !important; }
+.auth-card .brand-mark .dot{ width:9px;height:9px;margin-bottom:4px }
+.topbar nav{display:flex;gap:4px;align-items:center}
+.topbar nav a{
+  color:var(--text-2);padding:6px 12px;border-radius:6px;font-weight:500;font-size:13px;
+}
+.topbar nav a:hover{background:var(--surface-2);color:var(--text);text-decoration:none}
+.topbar nav a.active{background:var(--accent-soft);color:var(--accent-dark)}
+.topbar .user{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--text-2);margin-left:auto}
+.topbar .user form{display:inline}
+.topbar .user .link, .topbar .user button.link{
+  background:none;border:0;padding:0;color:var(--accent-dark);cursor:pointer;font:inherit;
+}
+.topbar .user .link:hover{text-decoration:underline}
+
+.role-badge{
+  display:inline-block;font-family:ui-monospace,Consolas,monospace;font-size:9.5px;
+  text-transform:uppercase;letter-spacing:.06em;padding:2px 5px;border-radius:3px;
+  background:var(--accent-soft);color:var(--accent-dark);font-weight:600;margin-left:4px;
+}
+
+/* Theme toggle button */
+.theme-toggle{
+  background:transparent;border:1px solid var(--border);border-radius:6px;
+  padding:5px 9px;cursor:pointer;color:var(--text-2);font-size:14px;line-height:1;
+  transition:background .12s ease;
+}
+.theme-toggle:hover{background:var(--surface-2)}
+
+/* ====== NOTIFICATION BELL & USER MENU & THEME PICKER ====== */
+.notification-wrapper, .user-menu-wrapper, .theme-wrapper{position:relative}
+
+/* Theme picker dropdown */
+.theme-dropdown{ min-width:260px }
+.theme-row{
+  display:flex;align-items:center;gap:10px;width:100%;
+  padding:8px 14px;background:transparent;border:0;cursor:pointer;
+  color:var(--text);font-size:13px;text-align:left;
+  border-left:3px solid transparent;
+  transition:background .12s, border-color .12s;
+}
+.theme-row:hover{ background:var(--surface-2); }
+.theme-row.active{ background:var(--accent-soft); border-left-color:var(--accent-dark); }
+.theme-swatch{
+  display:inline-flex;align-items:center;justify-content:flex-end;
+  width:34px;height:22px;border-radius:5px;border:1px solid var(--border);
+  padding-right:3px;flex:0 0 auto;
+}
+.theme-swatch-dot{
+  display:inline-block;width:10px;height:10px;border-radius:50%;
+  box-shadow:0 0 0 1px rgba(255,255,255,.25);
+}
+.theme-label{ flex:1; }
+.theme-check{ font-size:14px;color:var(--accent-dark); width:14px;text-align:right; }
+
+.icon-btn{
+  background:transparent;border:1px solid var(--border);border-radius:6px;
+  padding:5px 9px;cursor:pointer;color:var(--text-2);font-size:16px;
+  transition:background .12s ease;position:relative;
+}
+.icon-btn:hover{background:var(--surface-2)}
+
+.notification-bell .badge{
+  position:absolute;top:-6px;right:-6px;
+  min-width:18px;height:18px;padding:2px 5px;
+  font-size:10px;font-weight:600;line-height:14px;
+  border-radius:10px;background:var(--danger);color:#fff;
+}
+
+.user-menu-trigger{
+  background:transparent;border:1px solid var(--border);border-radius:6px;
+  padding:6px 12px;cursor:pointer;color:var(--text);
+  display:flex;align-items:center;gap:8px;
+  transition:background .12s ease,border-color .12s ease;
+}
+.user-menu-trigger:hover{background:var(--surface-2);border-color:var(--accent)}
+.user-menu-trigger .dropdown-arrow{font-size:10px;color:var(--text-3);transition:transform .2s}
+.user-menu-trigger.open .dropdown-arrow{transform:rotate(180deg)}
+
+.dropdown{
+  position:absolute;top:calc(100% + 6px);right:0;
+  min-width:220px;
+  /* `--card-bg` is the preferred alias; fall back to --surface so the
+   * topbar dropdowns never render as a transparent (and thus apparently
+   * non-existent) panel even if a theme forgets the alias. */
+  background:var(--card-bg, var(--surface));
+  border:1px solid var(--border);
+  border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);
+  z-index:1000;display:none;
+}
+.dropdown:not([hidden]){display:block}
+
+.notification-dropdown{min-width:360px;max-width:420px}
+.user-dropdown{min-width:200px}
+
+/* ====== Custom-report-template cards ======
+ * Previously every card looked identical (single grey "UNDEFINED" pill,
+ * no uploader info), making it impossible to tell uploads apart when
+ * several consultants pushed copies of the same template. Cards now
+ * carry a colour-coded left accent stripe driven by approval status,
+ * a coloured status pill, an uploader avatar + name, and a small chip
+ * showing how many placeholders the .docx has been marked with. */
+.tpl-card{
+  position:relative; overflow:hidden;
+  border:1px solid var(--border);
+  border-radius:10px;
+  background:var(--card-bg, var(--surface));
+  transition:transform .12s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.tpl-card::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:4px;
+  background:var(--text-3, var(--border));
+  transition:background .15s ease;
+}
+.tpl-card:hover{
+  transform:translateY(-1px);
+  border-color:var(--accent-dark, var(--accent));
+  box-shadow:0 6px 18px rgba(0,0,0,.18);
+}
+.tpl-card.tpl-approved::before { background:var(--accent-dark, var(--accent, #7C5CFC)); }
+.tpl-card.tpl-pending::before  { background:#eab308; }
+.tpl-card.tpl-draft::before    { background:var(--text-3, #9ca3af); }
+.tpl-card.tpl-rejected::before { background:#ef4444; }
+
+.tpl-card .tpl-h{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
+  padding:14px 16px 10px;
+  border-bottom:1px solid var(--border);
+}
+.tpl-card .tpl-h .tpl-title-wrap{flex:1;min-width:0}
+.tpl-card .tpl-h strong{
+  display:block;font-size:14.5px;font-weight:600;color:var(--text);
+  line-height:1.3;word-break:break-word;
+}
+.tpl-card .tpl-h .tpl-sub{
+  display:block;margin-top:2px;font-size:12px;color:var(--text-2);
+}
+
+.tpl-card .tpl-body{padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.tpl-card .tpl-body p{margin:0;font-size:12.5px;line-height:1.45}
+.tpl-card .tpl-meta-row{
+  display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;
+}
+.tpl-card .tpl-chip{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:2px 9px;font-size:11px;line-height:1.5;
+  background:var(--surface-2);color:var(--text-2);
+  border:1px solid var(--border);border-radius:999px;
+  white-space:nowrap;
+}
+.tpl-card .tpl-chip.tpl-chip-accent{
+  background:var(--accent-soft, rgba(124,92,252,.15));
+  color:var(--accent-dark, var(--accent));
+  border-color:var(--accent-dark, var(--accent));
+  font-weight:600;
+}
+.tpl-card .tpl-chip.tpl-chip-warn{
+  background:rgba(234,179,8,.12);color:#ca8a04;border-color:rgba(234,179,8,.45);
+}
+
+/* Uploader chip with a coloured initial. The initial circle is computed
+ * deterministically from the username string in JS so repeated copies of
+ * the same template uploaded by the same user always render the same
+ * colour — at-a-glance disambiguation when the list is long. */
+.tpl-uploader{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:3px 10px 3px 3px;background:var(--surface-2);color:var(--text);
+  border:1px solid var(--border);border-radius:999px;
+  font-size:12px;line-height:1.5;
+}
+.tpl-uploader .tpl-avatar{
+  width:22px;height:22px;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;
+  font-size:10.5px;font-weight:700;color:#fff;
+  font-family:ui-monospace,Consolas,monospace;
+}
+.tpl-uploader .tpl-uploader-name{font-weight:500}
+.tpl-uploader .tpl-uploader-role{color:var(--text-3, var(--text-2));font-size:10.5px;text-transform:uppercase;letter-spacing:.04em}
+.tpl-uploader.tpl-uploader-me{
+  background:var(--accent-soft, rgba(124,92,252,.15));
+  border-color:var(--accent-dark, var(--accent));
+}
+
+.tpl-card .actions{
+  display:flex;flex-wrap:wrap;gap:6px;
+  padding:10px 16px 14px;border-top:1px solid var(--border);
+  align-items:center;
+}
+
+/* ====== CVSS calculator (shared) ======
+ * These rules used to live only inside templates/partials/cvss_calc.html.
+ * Moving them here lets the same mount* functions be embedded inline on
+ * other pages (e.g. the "Add Finding" form) without re-pasting CSS, so
+ * the consultant can score a finding without leaving the page they're
+ * filling in. */
+.cvss-tabs{
+  display:flex;gap:4px;margin:8px 0 10px;
+  border-bottom:1px solid var(--border);
+}
+.cvss-tab{
+  background:transparent;border:0;cursor:pointer;
+  padding:8px 14px;font-size:13px;font-weight:500;color:var(--text-2);
+  border-bottom:2px solid transparent;border-radius:6px 6px 0 0;
+  transition:color .15s, border-color .15s, background .15s;
+}
+.cvss-tab:hover{ color:var(--text); background:var(--surface-2); }
+.cvss-tab.active{
+  color:var(--accent-dark, var(--accent));
+  border-bottom-color:var(--accent-dark, var(--accent));
+  font-weight:600;
+}
+.cvss-pane.is-hidden{ display:none }
+
+.cvss-wrap{ display:grid;grid-template-columns:1fr 280px;gap:18px;padding:10px 0; }
+@media(max-width:900px){ .cvss-wrap{ grid-template-columns:1fr } }
+.cvss-metrics{ display:grid;gap:10px; }
+.cvss-metric{ display:grid;gap:6px; }
+.cvss-metric label{ font-size:12px;font-weight:500;color:var(--text-2);margin:0; }
+.cvss-metric select{
+  background:var(--card-bg, var(--surface));color:var(--text);
+  border:1px solid var(--border);padding:6px 8px;border-radius:6px;font-size:12.5px;
+}
+.cvss-options{ display:flex;flex-wrap:wrap;gap:4px; }
+.cvss-opt{
+  background:var(--card-bg, var(--surface));color:var(--text);border:1px solid var(--border);
+  padding:4px 10px;font-size:12px;border-radius:6px;cursor:pointer;
+  transition:border-color .12s, background .12s, color .12s;
+}
+.cvss-opt:hover{ border-color:var(--accent); background:var(--surface-2); }
+.cvss-opt.active{
+  background:var(--accent-soft, rgba(124,92,252,.12));
+  color:var(--accent-dark, var(--accent));
+  border-color:var(--accent-dark, var(--accent));font-weight:600;
+}
+
+.cvss-output, .cvss-out{
+  background:var(--surface-2);border:1px solid var(--border);border-radius:8px;
+  padding:14px;display:flex;flex-direction:column;gap:10px;align-self:start;
+}
+.cvss-score-wrap{ display:flex;align-items:baseline;gap:10px; }
+.cvss-score{
+  font-size:30px;font-weight:700;font-family:ui-monospace,Consolas,monospace;
+  color:var(--text);
+}
+.cvss-sev{
+  display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;
+  font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+}
+.cvss-sev.sev-critical{ background:var(--critical-bg);color:var(--critical-fg);border:1px solid var(--critical-line) }
+.cvss-sev.sev-high    { background:var(--high-bg);    color:var(--high-fg);    border:1px solid var(--high-line) }
+.cvss-sev.sev-medium  { background:var(--medium-bg);  color:var(--medium-fg);  border:1px solid var(--medium-line) }
+.cvss-sev.sev-low     { background:var(--low-bg);     color:var(--low-fg);     border:1px solid var(--low-line) }
+.cvss-sev.sev-none, .cvss-sev.sev-informational
+                      { background:var(--info-bg);    color:var(--info-fg);    border:1px solid var(--info-line) }
+.cvss-vector{
+  font-family:ui-monospace,Consolas,monospace;font-size:12px;
+  word-break:break-all;color:var(--text-2);
+}
+.cvss-vector-wrap{ display:flex;gap:6px; }
+.cvss-vector-wrap input{
+  flex:1;font-family:ui-monospace,Consolas,monospace;font-size:12px;
+  background:var(--card-bg, var(--surface));color:var(--text);
+  border:1px solid var(--border);padding:5px 8px;border-radius:5px;
+}
+.cvss-group{ margin-bottom:14px; }
+.cvss-group h4{ font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;
+                color:var(--text-2);margin:0 0 8px;font-weight:600 }
+
+/* Custom-template upload instructions panel. Themed via CSS variables so
+ * the box reads correctly under all six built-in themes (previously
+ * hard-coded `#1a2332` / `#0f172a` only matched the dark theme). */
+.tpl-instructions{
+  background:var(--surface-2);
+  border-left:4px solid var(--accent-dark, var(--accent, #7C5CFC));
+  padding:14px 16px;
+  margin:14px 16px;
+  border-radius:6px;
+  max-height:55vh;overflow-y:auto;
+}
+.tpl-instructions p, .tpl-instructions li{color:var(--text)}
+.tpl-instructions a.link{color:var(--accent-dark, var(--accent))}
+.tpl-ph{
+  background:var(--card-bg, var(--surface));
+  border:1px solid var(--border);
+  padding:1px 6px;border-radius:3px;
+  font-family:ui-monospace,Consolas,monospace;font-size:12.5px;
+  color:var(--accent-dark, var(--accent));
+  white-space:nowrap;
+}
+.tpl-ph-block{
+  display:block;white-space:pre;padding:8px 10px;margin-top:4px;
+  font-size:12px;line-height:1.45;
+}
+
+/* Notification feed items inside the bell dropdown. Built dynamically
+ * by the IIFE at the bottom of base.html. Unread rows get a soft
+ * accent stripe + slightly more emphasis on the message text so the
+ * eye lands on them first. */
+.notif-item{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:10px 14px;border-bottom:1px solid var(--border);
+  text-decoration:none;color:var(--text);
+  transition:background .12s ease;
+}
+.notif-item:last-child{border-bottom:none}
+.notif-item:hover{background:var(--surface-2)}
+.notif-item-unread{
+  background:var(--accent-soft, rgba(124,92,252,.08));
+  border-left:3px solid var(--accent-dark, var(--accent, #7C5CFC));
+  padding-left:11px;
+}
+.notif-item-unread .notif-msg{font-weight:600}
+.notif-icon{font-size:16px;line-height:1.4;flex:0 0 auto;margin-top:1px}
+.notif-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.notif-msg{font-size:13px;line-height:1.35;color:var(--text);
+           word-break:break-word}
+.notif-detail{font-size:11.5px}
+.notif-time{font-size:11px}
+.btn-link{
+  background:transparent;border:0;color:var(--accent-dark, var(--accent));
+  cursor:pointer;font-size:12px;text-decoration:underline;padding:0;
+}
+.btn-link:hover{opacity:.85}
+
+.dropdown-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 14px;border-bottom:1px solid var(--border);
+}
+.dropdown-header strong{font-size:13px;font-weight:600}
+
+.dropdown-body{max-height:400px;overflow-y:auto}
+
+.dropdown-item{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 14px;color:var(--text);text-decoration:none;
+  font-size:13px;cursor:pointer;border:none;background:transparent;
+  width:100%;text-align:left;transition:background .12s;
+}
+.dropdown-item:hover{background:var(--surface-2)}
+.dropdown-item span:first-child{font-size:16px;opacity:0.8}
+/* `display:flex` above overrides the browser default `[hidden]{display:none}`,
+ * so an item programmatically toggled with `el.hidden = true` stays visible.
+ * Force `display:none` back when the attribute is present so the JS gate on
+ * "Re-enable finding walkthrough" (only shown if the user has dismissed the
+ * walkthrough for the session) actually hides the row. */
+.dropdown-item[hidden]{ display:none !important; }
+
+.dropdown-divider{
+  margin:6px 0;border:none;border-top:1px solid var(--border);
+}
+
+/* ====== MAIN ====== */
+/* Page-level container.  Most pages stay readable up to ~1400px (forms,
+   long-form report editing). The listing pages (Dashboard, Projects,
+   Reports) get a wider cap via the `.is-wide` body modifier so the
+   tables stop looking like postage stamps on 4K screens. */
+main{padding:24px 28px 40px;max-width:1400px;margin:0 auto}
+body.is-wide main{ max-width:1800px; }
+@media(min-width:2000px){
+  body.is-wide main{ max-width:90vw; }
+}
+footer{padding:16px 28px;border-top:1px solid var(--border);text-align:center;color:var(--text-3);font-size:12px}
+
+/* ====== PAGE HEADER ====== */
+.page-header{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:14px;
+  margin-bottom:22px;
+}
+.page-header h1{font-size:22px;font-weight:600;letter-spacing:-.01em;margin:0}
+.page-header .actions{display:flex;gap:8px}
+.page-sub, .muted{color:var(--text-2)}
+.small{font-size:11.5px}
+.muted.small{color:var(--text-3)}
+
+/* ====== CARDS ====== */
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-sm);margin-bottom:18px;
+}
+.card-h, .card-head{
+  padding:14px 16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+.card-h h2, .card-head h2, .card-head h3{margin:0;font-size:14px;font-weight:600}
+.card-h a{font-size:12.5px;color:var(--accent-dark)}
+.card-body{padding:14px 16px}
+.card > p, .card > .form-row, .card > .form-vertical, .card > form{padding:14px 16px}
+.card > table.data, .card > .data, .card > .library-results{margin:0}
+
+.empty{text-align:center;padding:36px 24px;color:var(--text-2);font-size:13px}
+
+/* ====== GRID ====== */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}
+@media(max-width:880px){.grid-2,.grid-3{grid-template-columns:1fr}}
+
+/* ====== TABLES ====== */
+table.data, table.list{
+  width:100%;border-collapse:collapse;font-size:13px;
+}
+table.data th, table.list th{
+  text-align:left;font-weight:500;color:var(--text-3);font-size:11px;
+  text-transform:uppercase;letter-spacing:.06em;padding:10px 14px;
+  border-bottom:1px solid var(--border);background:var(--surface-2);
+}
+table.data td, table.list td{
+  padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle;
+}
+table.data tr:last-child td, table.list tr:last-child td{border-bottom:none}
+table.data tbody tr:hover td, table.list tbody tr:hover td{background:var(--surface-2)}
+table.data code, table.list code{
+  background:var(--surface-2);padding:1px 6px;border-radius:4px;font-size:11.5px;color:var(--text-2);
+}
+
+/* ====== BUTTONS ====== */
+.btn, .btn-primary, button.btn-primary, button[type="submit"], input[type="submit"]{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:7px 13px;border-radius:6px;font:inherit;font-size:12.5px;font-weight:500;
+  cursor:pointer;border:1px solid var(--border-2);background:var(--surface);color:var(--text);
+  text-decoration:none;line-height:1.3;
+  transition:background .12s ease, border-color .12s ease, transform .06s ease;
+  box-shadow:var(--shadow-sm);
+}
+.btn:hover, .btn-primary:hover, button[type="submit"]:hover, input[type="submit"]:hover{background:var(--surface-2)}
+.btn:active, .btn-primary:active, button[type="submit"]:active{transform:translateY(.5px)}
+.btn-primary, button.btn-primary, button[type="submit"], input[type="submit"]{
+  background:var(--accent);border-color:var(--accent-dark);color:#fff;font-weight:600;
+  box-shadow:0 1px 0 rgba(255,255,255,.15) inset, var(--shadow-sm);
+}
+.btn-primary:hover, button[type="submit"]:hover, input[type="submit"]:hover{
+  background:var(--accent-dark);text-decoration:none;color:#fff;
+}
+a.btn-primary{color:#fff}
+a.btn-primary:hover{color:#fff;text-decoration:none}
+.btn.ghost{background:transparent;border-color:transparent;box-shadow:none}
+.btn.ghost:hover{background:var(--surface-2)}
+.btn.danger{background:var(--surface);color:var(--err-fg);border-color:#fecaca}
+.btn.danger:hover{background:var(--err-bg)}
+.btn.lg, .btn-primary.lg{padding:10px 16px;font-size:13.5px}
+
+/* ====== FORMS ====== */
+form{margin:0}
+label{display:block;font-size:11.5px;color:var(--text-2);font-weight:500;margin-bottom:5px}
+input[type="text"], input[type="email"], input[type="password"], input[type="search"],
+input[type="number"], input[type="date"], select, textarea{
+  width:100%;background:var(--surface);border:1px solid var(--border-2);border-radius:6px;
+  padding:10px 14px;font:inherit;font-size:14px;color:#ffffff;
+  margin-top:3px;min-height:44px;line-height:1.5;
+  transition:border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+input:focus, select:focus, textarea:focus{
+  outline:none;border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-soft);
+  background:var(--card-bg);
+  color:#ffffff;
+}
+textarea{resize:vertical;min-height:100px;font-family:inherit}
+input[type="checkbox"]{width:auto;margin-right:6px;vertical-align:middle;min-height:auto}
+
+/* Placeholder text - make it visible */
+input::placeholder, textarea::placeholder{
+  color:#9ca3af;
+  opacity:1;
+}
+
+/* Dropdown options styling - dark theme with high contrast */
+select option{
+  background:var(--surface);
+  color:#ffffff;
+  padding:10px 14px;
+  font-size:14px;
+}
+select option:hover, select option:focus{
+  background:var(--accent-soft);
+  color:#ffffff;
+}
+select option:checked{
+  background:var(--accent);
+  color:#ffffff;
+  font-weight:600;
+}
+
+/* Date input calendar styling */
+input[type="date"]::-webkit-calendar-picker-indicator{
+  filter:invert(0.8);
+  cursor:pointer;
+}
+
+.form-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.form-row label{flex:0 0 auto;margin-bottom:0}
+.form-row label.grow{flex:1 1 auto}
+.form-vertical{display:flex;flex-direction:column;gap:12px}
+.form-vertical label{margin-bottom:0}
+
+/* ====== STEPS BUILDER ====== */
+.steps-builder{
+  display:flex;flex-direction:column;gap:12px;
+  padding:16px;background:var(--surface);border-radius:8px;
+  border:1px solid var(--border);min-height:120px;
+}
+.steps-builder:empty::before{
+  content:"No steps added yet. Click '+ Add text step' to begin.";
+  color:var(--muted);font-size:13px;text-align:center;display:block;padding:20px;
+}
+.step-block{
+  position:relative;background:var(--card-bg);border:1px solid var(--border-2);
+  border-radius:6px;padding:12px;display:flex;flex-direction:column;gap:8px;
+  transition:opacity .15s, box-shadow .15s;
+}
+.step-block.is-dragging{
+  opacity:.4;
+  box-shadow:0 4px 16px rgba(0,0,0,.4);
+  cursor:grabbing;
+}
+.step-block-header{
+  display:flex;align-items:center;gap:8px;
+}
+.step-block-grip{
+  cursor:grab;color:var(--muted);font-size:20px;padding:4px 6px;
+  user-select:none;-webkit-user-select:none;
+  line-height:1;
+}
+.step-block-grip:hover{color:var(--text)}
+.step-block-grip:active{cursor:grabbing}
+.step-block-type{
+  font-size:11px;text-transform:uppercase;font-weight:600;
+  padding:2px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent);
+}
+.step-block textarea{
+  width:100%;min-height:60px;background:var(--bg);border:1px solid var(--border);
+  border-radius:4px;padding:8px;font-size:13px;color:var(--text);resize:vertical;
+}
+.step-block img{
+  max-width:100%;height:auto;border-radius:4px;border:1px solid var(--border);
+  pointer-events:none; /* prevent native image drag from hijacking DnD */
+}
+.step-block-caption{
+  font-size:12px;color:var(--muted);margin-top:4px;
+}
+.step-block-actions{
+  display:flex;gap:6px;margin-left:auto;
+}
+.step-block-actions button{
+  padding:4px 10px;font-size:12px;
+}
+
+/* ====== PILLS / TAGS / STATUS ====== */
+.pill, .badge{
+  display:inline-flex;align-items:center;gap:5px;padding:2px 8px 3px;border-radius:99px;
+  font-size:11px;font-weight:500;font-family:ui-monospace,Consolas,monospace;
+  border:1px solid transparent;line-height:1.5;
+}
+.pill i{width:6px;height:6px;border-radius:50%}
+.pill.critical, .severity-critical{background:var(--critical-bg);color:var(--critical-fg);border-color:var(--critical-line)}
+.pill.critical i{background:var(--critical-fg)}
+.pill.high, .severity-high{background:var(--high-bg);color:var(--high-fg);border-color:var(--high-line)}
+.pill.high i{background:var(--high-fg)}
+.pill.medium, .severity-medium{background:var(--medium-bg);color:var(--medium-fg);border-color:var(--medium-line)}
+.pill.medium i{background:var(--medium-fg)}
+.pill.low, .severity-low{background:var(--low-bg);color:var(--low-fg);border-color:var(--low-line)}
+.pill.low i{background:var(--low-fg)}
+.pill.info, .severity-informational{background:var(--info-bg);color:var(--info-fg);border-color:var(--info-line)}
+.pill.info i{background:var(--info-fg)}
+.pill.ok{background:var(--ok-bg);color:var(--ok-fg);border-color:var(--ok-line)}
+.pill.err{background:var(--err-bg);color:var(--err-fg);border-color:#fecaca}
+.pill.warn{background:var(--warn-bg);color:var(--warn-fg);border-color:#fde68a}
+.pill.accent{background:var(--accent-soft);color:var(--accent-dark);border-color:var(--accent-line)}
+.pill.plain{background:var(--surface-2);color:var(--text-2);border-color:var(--border)}
+
+/* Generic status -- works for any status value */
+.status, .status[class*="status-"]{
+  display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:500;
+  font-family:ui-monospace,Consolas,monospace;border:1px solid transparent;text-transform:lowercase;
+  background:var(--surface-2);color:var(--text-2);border-color:var(--border);
+}
+.status.status-active, .status-active{background:var(--ok-bg);color:var(--ok-fg);border-color:var(--ok-line)}
+.status.status-reporting, .status-reporting{background:var(--warn-bg);color:var(--warn-fg);border-color:#fde68a}
+.status.status-closed, .status-closed{background:var(--surface-2);color:var(--text-2);border-color:var(--border)}
+.status.status-draft, .status-draft{background:var(--warn-bg);color:var(--warn-fg);border-color:#fde68a}
+.status.status-open, .status-open{background:var(--ok-bg);color:var(--ok-fg);border-color:var(--ok-line)}
+.status.status-pending_review, .status-pending_review{background:var(--warn-bg);color:var(--warn-fg);border-color:#fde68a}
+.status.status-approved, .status-approved{background:var(--ok-bg);color:var(--ok-fg);border-color:var(--ok-line)}
+
+/* ====== AUTH (login splash) ====== */
+.auth-shell{
+  min-height:calc(100vh - 52px);display:grid;place-items:center;padding:32px 16px;
+  background:
+    radial-gradient(600px 300px at 80% 20%, var(--accent-soft), transparent 60%),
+    radial-gradient(500px 350px at 15% 85%, var(--accent-soft), transparent 70%),
+    linear-gradient(180deg, var(--bg), var(--surface-2));
+}
+.auth-card{
+  width:100%;max-width:380px;padding:28px 28px 22px;margin:0;
+  box-shadow:var(--shadow-lg);background:var(--surface);border:1px solid var(--border);
+  border-radius:14px;
+}
+.auth-card h1{margin:0 0 6px;font-size:22px;letter-spacing:-.01em}
+.auth-card label{margin-top:14px}
+.auth-card .btn-primary{width:100%;margin-top:18px;padding:11px;font-size:14px}
+
+/* ====== LIBRARY RESULTS / FINDING CARDS ====== */
+.library-results{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.library-results .item{
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:12px 14px;cursor:pointer;transition:border-color .12s ease;
+}
+.library-results .item:hover{border-color:var(--border-strong)}
+.library-results .item h3{margin:0 0 4px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.library-results .item .meta{font-size:11.5px;color:var(--text-3);font-family:ui-monospace,Consolas,monospace;margin-bottom:6px}
+.library-results .item p{margin:0;font-size:12.5px;color:var(--text-2);line-height:1.5}
+
+/* ====== UTILITY ====== */
+.divider{height:1px;background:var(--border);margin:14px 0;border:none}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.row.between{justify-content:space-between}
+.mono{font-family:ui-monospace,Consolas,monospace}
+.right{text-align:right}
+
+/* HTMX indicator */
+.htmx-indicator{opacity:0;transition:opacity .15s}
+.htmx-request .htmx-indicator{opacity:1}
+.htmx-request.htmx-indicator{opacity:1}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;background:#0f172a;color:#fff;padding:10px 18px;border-radius:8px;
+  font-size:13px;box-shadow:var(--shadow-lg);z-index:100;
+  display:flex;align-items:center;gap:8px;animation:toastIn 2.6s ease forwards;}
+.toast .ic{color:var(--accent)}
+@keyframes toastIn{0%{opacity:0;transform:translateY(8px)}10%{opacity:1;transform:none}85%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-4px)}}
+
+/* Headings inside content */
+h1, h2, h3, h4{color:var(--text)}
+h2{font-size:16px;font-weight:600;letter-spacing:-.01em}
+h3{font-size:14px;font-weight:600}
+
+/* ============================================================
+ * COMPREHENSIVE THEMING for all template class names
+ * (covers reports/edit.html, findings/library.html, partials/cvss_calc.html etc.)
+ * ============================================================ */
+
+/* ====== ALL BUTTONS get themed by default ====== */
+button, input[type="submit"], .btn-secondary, .btn-danger, button.btn-secondary, button.btn-danger {
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:7px 13px;border-radius:6px;font:inherit;font-size:12.5px;font-weight:500;
+  cursor:pointer;line-height:1.3;text-decoration:none;
+  transition:background .12s ease, border-color .12s ease, transform .06s ease;
+  box-shadow:var(--shadow-sm);
+}
+button, input[type="submit"], .btn-secondary, button.btn-secondary {
+  border:1px solid var(--border-2);background:var(--surface);color:var(--text);
+}
+button:hover, input[type="submit"]:hover, .btn-secondary:hover{background:var(--surface-2)}
+.btn-danger, button.btn-danger{
+  background:var(--surface);color:var(--err-fg);border:1px solid #fecaca;
+}
+.btn-danger:hover{background:var(--err-bg)}
+.btn-primary, button.btn-primary{
+  background:var(--accent) !important;border:1px solid var(--accent-dark) !important;color:#fff !important;font-weight:600;
+  box-shadow:0 1px 0 rgba(255,255,255,.15) inset, var(--shadow-sm);
+}
+.btn-primary:hover{background:var(--accent-dark) !important;color:#fff !important}
+/* Sign-out link button in topbar should NOT get the chip styling */
+.topbar .user button.link{
+  background:none;border:0;padding:0;color:var(--accent-dark);
+  font:inherit;font-size:12.5px;font-weight:normal;box-shadow:none;
+}
+.topbar .user button.link:hover{background:none;text-decoration:underline}
+.theme-toggle{
+  background:transparent !important;border:1px solid var(--border) !important;
+  border-radius:6px;padding:5px 9px;color:var(--text-2) !important;font-size:14px;
+  font-weight:normal;box-shadow:none;
+}
+.theme-toggle:hover{background:var(--surface-2) !important}
+
+/* ====== BADGES (DRAFT, FINAL, etc.) ====== */
+.badge, .sev-badge{
+  display:inline-block;padding:2px 8px;border-radius:99px;font-size:10.5px;
+  font-weight:600;font-family:ui-monospace,Consolas,monospace;
+  text-transform:uppercase;letter-spacing:.05em;border:1px solid transparent;
+  vertical-align:middle;line-height:1.5;
+}
+.badge.draft{background:var(--warn-bg);color:var(--warn-fg);border-color:#fde68a}
+.badge.final{background:var(--ok-bg);color:var(--ok-fg);border-color:var(--ok-line)}
+
+/* Semantic badge variants — used by the JS-rendered template + finding
+ * cards. Themed via CSS variables so they read under all six themes.
+ * Without these, JS code that emits `class="badge badge-success"` etc.
+ * inherits only the base pill shape — the colour cue is lost and you
+ * get a uniform grey badge that defeats the whole point.  */
+.badge.badge-success{
+  background:var(--ok-bg, rgba(124,92,252,.18));
+  color:var(--ok-fg, var(--accent-dark, #65a30d));
+  border-color:var(--ok-line, rgba(124,92,252,.45));
+}
+.badge.badge-warning{
+  background:var(--warn-bg, rgba(234,179,8,.18));
+  color:var(--warn-fg, #ca8a04);
+  border-color:rgba(234,179,8,.45);
+}
+.badge.badge-danger{
+  background:var(--err-bg, rgba(239,68,68,.18));
+  color:var(--err-fg, #dc2626);
+  border-color:rgba(239,68,68,.45);
+}
+.badge.badge-secondary{
+  background:var(--surface-2);
+  color:var(--text-2);
+  border-color:var(--border);
+}
+.badge.badge-muted{
+  background:transparent;
+  color:var(--text-3, var(--text-2));
+  border-color:var(--border);
+}
+.badge.badge-accent{
+  background:var(--accent-soft, rgba(124,92,252,.15));
+  color:var(--accent-dark, var(--accent));
+  border-color:var(--accent-dark, var(--accent));
+}
+
+/* ====== SEVERITY BADGES (used by JS-rendered finding lists) ====== */
+.sev-badge{padding:2px 9px;font-size:10.5px}
+.sev-critical, .sev-badge.sev-critical{background:var(--critical-bg);color:var(--critical-fg);border-color:var(--critical-line)}
+.sev-high,     .sev-badge.sev-high    {background:var(--high-bg);    color:var(--high-fg);    border-color:var(--high-line)}
+.sev-medium,   .sev-badge.sev-medium  {background:var(--medium-bg);  color:var(--medium-fg);  border-color:var(--medium-line)}
+.sev-low,      .sev-badge.sev-low     {background:var(--low-bg);     color:var(--low-fg);     border-color:var(--low-line)}
+.sev-info, .sev-informational,
+.sev-badge.sev-info, .sev-badge.sev-informational{background:var(--info-bg);color:var(--info-fg);border-color:var(--info-line)}
+
+/* ====== TABS (in reports/edit.html) ====== */
+nav.tabs{
+  display:flex;gap:0;border-bottom:1px solid var(--border);margin:0 0 18px;padding:0;
+  background:transparent;
+}
+nav.tabs a{
+  padding:8px 14px;color:var(--text-2);font-size:13px;font-weight:500;
+  border-bottom:2px solid transparent;text-decoration:none;
+  transition:color .12s ease, border-color .12s ease;
+}
+nav.tabs a:hover{color:var(--text);text-decoration:none}
+nav.tabs a.active, nav.tabs a:target{color:var(--accent-dark);border-bottom-color:var(--accent)}
+
+/* ====== LIB ROWS (library results) ====== */
+.lib-row{
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:12px 14px;margin-bottom:10px;
+  display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  transition:border-color .12s ease;
+}
+.lib-row:hover{border-color:var(--border-strong)}
+.lib-row strong{font-weight:600;font-size:13.5px;display:inline-block;margin-right:6px}
+.lib-row .muted{font-size:11.5px;margin-top:4px}
+.lib-row .muted.small{color:var(--text-3);font-family:ui-monospace,Consolas,monospace}
+.lib-row > div:first-child{flex:1;min-width:0}
+
+#results, #lib-results{
+  display:flex;flex-direction:column;gap:0;margin-top:14px;
+}
+
+/* ====== FINDING CARDS (in-place edit on edit.html) ====== */
+.findings-list{display:flex;flex-direction:column;gap:12px;padding:0 16px 16px}
+.finding-card{
+  background:var(--surface-2);border:1px solid var(--border);border-radius:8px;
+  padding:14px 16px;transition:border-color .12s ease;
+}
+.finding-card:hover{border-color:var(--border-strong)}
+.finding-card > header{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  margin-bottom:8px;flex-wrap:wrap;
+}
+.finding-card > header > div:first-child{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  /* Title block is clickable — clicking anywhere on it (except inside
+   * row-actions) toggles the card body open / closed, so the whole
+   * row reads as an affordance instead of forcing the user to hunt
+   * for the small "Edit" button. */
+  cursor:pointer; user-select:none; padding:2px 4px; margin:-2px -4px;
+  border-radius:4px; transition: background .12s;
+}
+.finding-card > header > div:first-child:hover{ background:var(--surface-3); }
+.finding-card .f-title{font-size:14px;font-weight:600}
+.finding-card .f-source{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;
+  color:var(--text-3);text-transform:uppercase;letter-spacing:.04em}
+.finding-card .f-asset{font-family:ui-monospace,Consolas,monospace;font-size:11.5px;
+  color:var(--text-2);margin:0 0 4px}
+.finding-card .added-by{font-family:ui-monospace,Consolas,monospace;font-size:10.5px;
+  color:var(--text-3);margin:0}
+.finding-card .row-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.finding-card .row-actions select.f-status{
+  padding:4px 8px;font-size:11.5px;border:1px solid var(--border-2);border-radius:5px;
+  background:var(--surface);color:var(--text);font-family:ui-monospace,Consolas,monospace;
+  min-width:auto;width:auto;margin:0;
+}
+
+/* ---- Compact (collapsed-all) state ----
+ * When the user clicks the section-level "Collapse all" button we add
+ * `.is-compact` to every card so the list becomes a scannable
+ * title-only overview — severity badge + title + (optional) source
+ * tag, nothing else. Every other element on the card is hidden:
+ * status dropdown, Edit/Delete buttons, affected-asset URL,
+ * "Added by …" attribution, and the edit body (already hidden
+ * separately by the `[hidden]` attribute). Clicking anywhere on the
+ * compact card removes the class and opens the body — a one-click
+ * way to drill into a specific finding from the overview. */
+.finding-card.is-compact{
+  padding:6px 14px; cursor:pointer;
+}
+.finding-card.is-compact > header{
+  margin-bottom:0;
+}
+.finding-card.is-compact > header > div:first-child{
+  flex:1; min-width:0;
+}
+.finding-card.is-compact .f-title{
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.finding-card.is-compact .row-actions,
+.finding-card.is-compact > .f-asset,
+.finding-card.is-compact > .added-by{
+  display:none !important;
+}
+.finding-card.is-compact:hover{
+  background:var(--surface-3);
+}
+/* A tiny chevron on the right that hints "click to expand" — placed
+ * absolutely so it doesn't push the title around. */
+.finding-card.is-compact > header::after{
+  content:"▸"; color:var(--text-3); font-size:11px;
+  align-self:center; margin-left:auto;
+}
+
+/* CRITICAL: scope this rule to `:not([hidden])` so the HTML `hidden`
+   attribute on `.f-body` actually hides the panel. Without the guard,
+   `display:flex` here has the same specificity as the browser's
+   `[hidden]{display:none}` and — landing later in the cascade — wins,
+   meaning every finding's body was visible regardless of whether the
+   user had expanded it. This silently broke the per-card Collapse,
+   the section's Collapse-all, and even the page's initial-state
+   (cards opened "by default" because the `hidden` attribute was a
+   no-op). */
+.f-body:not([hidden]){
+  margin-top:14px;padding:14px;background:var(--surface);border:1px solid var(--border);
+  border-radius:6px;display:flex;flex-direction:column;gap:12px;
+}
+.f-body label{margin:0}
+.f-body .subsection{padding-top:10px;border-top:1px dashed var(--border)}
+.f-body .subsection h4{
+  margin:0 0 10px;font-size:11px;font-weight:600;color:var(--text-3);
+  text-transform:uppercase;letter-spacing:.06em;
+}
+.f-body ul{list-style:none;padding:0;margin:6px 0;display:flex;flex-direction:column;gap:4px}
+.f-body ul li{
+  font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--text-2);
+  background:var(--surface-2);border:1px solid var(--border);padding:6px 10px;border-radius:5px;
+}
+.f-body input[type="file"]{
+  font-size:12px;color:var(--text-2);background:var(--surface-2);
+  border:1px dashed var(--border-2);padding:8px;border-radius:5px;cursor:pointer;
+}
+.f-body .actions{display:flex;gap:8px;padding-top:6px;border-top:1px solid var(--border)}
+
+/* ====== PER-FINDING SCREENSHOTS SECTION ====== */
+/* Captioned-screenshot grid that lives inside every finding card's
+ * f-body. Captions are NOT auto-saved any more — the
+ * `.f-shot-save` button below the grid is the explicit commit.
+ * The whole block stays themed via CSS vars so light / dark /
+ * midnight / dracula / solarized all render cleanly. */
+
+.f-screens-section .f-shot-header,
+.f-followup-section .f-shot-header{
+  display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  margin-bottom:8px;
+}
+.f-screens-section .f-shot-header h4,
+.f-followup-section .f-shot-header h4{ margin:0 }
+
+.f-screens-section .f-shots,
+.f-followup-section .f-retest-shots{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
+  gap:12px; list-style:none; padding:0; margin:0 0 10px;
+}
+
+.f-shot-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:10px;
+  display:grid;
+  grid-template-columns:1fr auto;
+  grid-template-areas:
+    "img    img"
+    "cap    del";
+  gap:8px;
+  transition:border-color .12s, transform .12s;
+}
+.f-shot-card:hover{
+  border-color:var(--accent-line);
+}
+.f-shot-img{
+  grid-area:img;
+  width:100%; max-height:140px; object-fit:contain;
+  background:var(--surface-3);
+  border:1px solid var(--border);
+  border-radius:6px;
+}
+.f-shot-card .f-shot-cap{
+  grid-area:cap;
+  width:100%; box-sizing:border-box;
+  font-size:12px; padding:5px 8px;
+  background:var(--surface-2); color:var(--text);
+  border:1px solid var(--border); border-radius:5px;
+  margin:0;
+}
+.f-shot-card .f-shot-cap:focus{
+  outline:none;
+  border-color:var(--accent-dark);
+  background:var(--surface);
+}
+.f-shot-card .f-shot-del{
+  grid-area:del;
+  padding:2px 10px; font-size:13px; line-height:1;
+  min-width:0;
+}
+.f-shot-card .f-shot-del:hover{
+  background:var(--err-bg); color:var(--err-fg); border-color:#fecaca;
+}
+
+/* f-retest-cap — caption input inside the follow-up screenshot cards */
+.f-shot-card .f-retest-cap{
+  grid-area:cap;
+  width:100%; box-sizing:border-box;
+  font-size:12px; padding:5px 8px;
+  background:var(--surface-2); color:var(--text);
+  border:1px solid var(--border); border-radius:5px;
+  margin:0;
+}
+.f-shot-card .f-retest-cap:focus{
+  outline:none; border-color:var(--accent-dark); background:var(--surface);
+}
+
+/* Upload status label inside image step blocks */
+.step-block-upload-status{
+  font-size:12px; color:var(--muted); min-height:16px;
+}
+
+/* Control row below the grid */
+.f-screens-section .f-shot-controls,
+.f-followup-section .f-shot-controls{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding-top:6px; border-top:1px dashed var(--border);
+}
+.f-shot-upload-btn{
+  display:inline-flex; align-items:center; gap:6px;
+  cursor:pointer;
+}
+.f-shot-upload-btn input[type="file"]{ display:none }
+.f-shot-save{
+  display:inline-flex; align-items:center; gap:6px;
+}
+.f-shot-save:disabled{
+  opacity:.45; cursor:not-allowed;
+  /* When disabled (clean state) the button reads as a passive label
+   * rather than an actionable affordance — drops the accent-bg
+   * styling so it doesn't compete with the upload button. */
+  background:var(--surface-2); color:var(--text-2);
+  border-color:var(--border);
+}
+.f-shot-save.is-dirty:not(:disabled){
+  /* Subtle pulse to draw attention to unsaved changes — only when
+   * the button is actually clickable (i.e. there are edits). */
+  box-shadow:0 0 0 0 var(--accent-soft);
+  animation:fShotPulse 1.6s ease-out infinite;
+}
+@keyframes fShotPulse{
+  0%   { box-shadow:0 0 0 0 var(--accent-soft); }
+  70%  { box-shadow:0 0 0 6px transparent; }
+  100% { box-shadow:0 0 0 0 transparent; }
+}
+
+/* Status message — colours track state. */
+.f-shot-msg{ margin:0; min-height:14px; }
+.f-shot-msg.dirty  { color:var(--warn-fg, var(--text-2)); font-weight:500; }
+.f-shot-msg.saving { color:var(--text-2); font-style:italic; }
+.f-shot-msg.saved  { color:var(--ok-fg); }
+.f-shot-msg.failed { color:var(--err-fg); }
+
+@media (prefers-reduced-motion: reduce){
+  .f-shot-save.is-dirty:not(:disabled){ animation:none }
+}
+
+/* ====== MODAL ====== */
+.modal{
+  position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(2px);
+  /* z-index:10000 keeps modals above the topbar (60), notes widget (9000),
+   * and minbar (9001). Previously 50, which caused the notes panel to
+   * render on top of open modals, making them appear unresponsive. */
+  z-index:10000;display:flex;align-items:flex-start;justify-content:center;
+  padding:50px 20px 20px;overflow-y:auto;
+}
+html[data-theme="dark"] .modal{background:rgba(0,0,0,.65)}
+.modal[hidden]{display:none}
+.modal-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  box-shadow:var(--shadow-lg);width:100%;max-width:640px;overflow:hidden;margin-bottom:auto;
+}
+.modal-card .card-h{padding:16px 20px;border-bottom:1px solid var(--border)}
+.modal-card .card-h h2{font-size:15px}
+.modal-card .card-h .link{
+  background:none;border:0;font-size:22px;color:var(--text-3);cursor:pointer;
+  padding:0 4px;line-height:1;box-shadow:none;
+}
+.modal-card .card-h .link:hover{color:var(--text);background:none}
+.modal-body{padding:18px 20px;max-height:calc(100vh - 200px);overflow-y:auto}
+.modal-body input[type="search"]{margin-bottom:12px}
+
+/* ====== SUBCARD (used in scan imports) ====== */
+.subcard{
+  padding:14px 16px;border-bottom:1px solid var(--border);
+}
+.subcard:last-child{border-bottom:none}
+.subcard h3{margin:0 0 6px;font-size:14px;font-weight:600}
+.subcard p.muted{margin:0 0 12px}
+
+/* ====== FORM GRID (in reports/edit.html report-details section) ====== */
+.form-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 16px;
+}
+.form-grid label{margin-bottom:0}
+.form-grid .span-2{grid-column:1 / -1}
+@media(max-width:760px){.form-grid{grid-template-columns:1fr}.form-grid .span-2{grid-column:auto}}
+
+/* ====== RESULT PANE (JSON output blocks) ====== */
+.result-pane{
+  margin-top:12px;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:6px;font-family:ui-monospace,Consolas,monospace;font-size:11.5px;
+  color:var(--text-2);max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;
+}
+
+/* ====== ACTIONS row ====== */
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.card .actions{padding:0 16px 14px}
+.card-h .actions{padding:0}
+
+/* ====== CVSS CALCULATOR WIDGET (mountCvssCalculator output) ====== */
+.cvss-calc{display:flex;flex-direction:column;gap:14px}
+.cvss-group{
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:12px 14px;
+}
+.cvss-group h4{
+  margin:0 0 10px;font-size:11px;font-weight:600;color:var(--text-3);
+  text-transform:uppercase;letter-spacing:.06em;
+}
+.cvss-metrics{
+  display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:10px;
+}
+.cvss-metric{display:flex;flex-direction:column;gap:4px}
+.cvss-metric label{margin:0;font-size:11.5px}
+.cvss-metric select{margin-top:0;padding:6px 9px;font-size:12px;font-family:ui-monospace,Consolas,monospace}
+
+.cvss-score{
+  display:flex;align-items:baseline;gap:10px;padding:14px 16px;
+  background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:8px;
+  margin-top:6px;
+}
+.cvss-score .num{
+  font-family:ui-monospace,Consolas,monospace;font-size:34px;font-weight:700;
+  color:var(--accent-dark);line-height:1;letter-spacing:-.02em;
+}
+.cvss-score .sev{
+  font-family:ui-monospace,Consolas,monospace;font-size:13px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--text-2);
+}
+.cvss-vector{
+  font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--text-2);
+  background:var(--surface-2);padding:8px 10px;border:1px solid var(--border);border-radius:6px;
+  margin-top:6px;word-break:break-all;
+}
+
+.cvss-fieldset{
+  border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin:0;
+  background:var(--surface-2);
+}
+.cvss-fieldset legend{
+  padding:0 6px;font-size:12px;font-weight:600;color:var(--text);
+}
+
+/* ====== SHOTS LIST ====== */
+.f-shots, .f-retest-shots{margin:0;padding:0;list-style:none}
+
+/* ====== Page-header tweaks for nested heading text ====== */
+.page-header h1 .muted{font-weight:400;font-size:16px;color:var(--text-3);margin-left:6px}
+
+/* Inputs inside .row-actions should not stretch full width */
+.row-actions select, .row-actions input, .finding-card header select{width:auto}
+
+/* ============================================================
+ * KEY-VALUE definition lists (.kv) — used on project detail page
+ * for "Scope & Schedule" sections.
+ * ============================================================ */
+.kv{
+  display:grid;
+  grid-template-columns:130px 1fr;
+  gap:10px 18px;
+  margin:0;
+  padding:14px 16px;
+  align-items:start;
+}
+.kv dt{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  color:var(--text-3);
+  font-weight:600;
+  margin:0;
+  padding-top:2px;
+}
+.kv dd{
+  margin:0;
+  font-size:13px;
+  color:var(--text);
+  line-height:1.5;
+  word-break:break-word;
+}
+.kv dd .targets{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.kv dd .targets li{
+  margin:0;
+  padding:0;
+}
+.kv dd .targets li code{
+  background:var(--surface-2);
+  border:1px solid var(--border);
+  padding:3px 9px;
+  border-radius:5px;
+  font-size:12px;
+  color:var(--text-2);
+  display:inline-block;
+}
+/* Generic <ul> fallback (when scope_targets exists but template doesn't use .targets class) */
+.kv dd ul{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+@media(max-width:560px){
+  .kv{grid-template-columns:1fr;gap:2px 0}
+  .kv dt{margin-top:8px}
+  .kv dt:first-child{margin-top:0}
+}
+
+/* ====== KV LIST (definition list used in Scope & Schedule, etc.) ====== */
+dl.kv{
+  margin:0;padding:14px 16px;
+  display:grid;grid-template-columns:140px 1fr;gap:10px 16px;
+  align-items:start;
+}
+dl.kv dt{
+  font-size:11px;font-weight:600;color:var(--text-3);
+  text-transform:uppercase;letter-spacing:.06em;
+  padding-top:2px;
+}
+dl.kv dd{
+  margin:0;font-size:13px;color:var(--text);line-height:1.5;
+  min-width:0;word-break:break-word;
+}
+dl.kv dd code{
+  background:var(--surface-2);border:1px solid var(--border);padding:1px 6px;
+  border-radius:4px;font-size:11.5px;
+}
+ul.targets{
+  list-style:none;padding:0;margin:0;
+  display:flex;flex-direction:column;gap:4px;
+}
+ul.targets li{padding:0}
+ul.targets li code{
+  background:var(--surface-2);border:1px solid var(--border);padding:3px 8px;
+  border-radius:4px;font-size:12px;color:var(--text);display:inline-block;
+}
+@media(max-width:560px){
+  dl.kv{grid-template-columns:1fr;gap:4px 0}
+  dl.kv dt{padding-top:8px}
+}
+
+/* ====== ERROR text helper ====== */
+.error{color:var(--err-fg);font-size:12.5px;margin:6px 0 0}
+
+/* ====== VERSION PICKER (two-digit major.minor input) ====== */
+.version-picker{
+  display:inline-flex;align-items:center;gap:8px;margin-top:3px;
+}
+.version-picker .digit-box{
+  display:inline-flex;flex-direction:column;align-items:stretch;
+  border:1px solid var(--border-2);border-radius:6px;overflow:hidden;
+  background:var(--surface);width:54px;
+}
+.version-picker .digit-box .step{
+  background:var(--surface-2);border:none;color:var(--text-2);font-size:11px;
+  height:18px;cursor:pointer;padding:0;line-height:1;font-family:ui-monospace,Consolas,monospace;
+  transition:background .12s ease;box-shadow:none;border-radius:0;
+}
+.version-picker .digit-box .step:hover{background:var(--surface-3);color:var(--text)}
+.version-picker .digit-box .step:disabled{opacity:.3;cursor:not-allowed}
+.version-picker .digit-box .digit{
+  text-align:center;padding:6px 0;font-family:ui-monospace,Consolas,monospace;
+  font-size:18px;font-weight:600;color:var(--text);
+  border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+  user-select:none;line-height:1;
+}
+.version-picker .dot{
+  font-size:22px;font-weight:700;color:var(--text-3);font-family:ui-monospace,Consolas,monospace;
+}
+.version-picker .digit-label{
+  font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;
+  text-align:center;padding:3px 0;background:var(--surface-2);
+  border-bottom:1px solid var(--border);font-weight:600;
+}
+
+/* ============================================================
+ * Live-presence avatar bar (used by /static/js/presence.js)
+ * Renders as a row of overlapping circular initials with a short
+ * label, sitting in the page header next to other action buttons.
+ * ============================================================ */
+.presence-bar{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 10px 4px 12px;margin-right:8px;
+  background:var(--surface-2);border:1px solid var(--border);
+  border-radius:999px;
+}
+.presence-bar[hidden]{display:none}
+.presence-bar .presence-label{
+  font-size:11px;color:var(--text-2);font-weight:500;
+  margin-right:4px;white-space:nowrap;
+}
+.presence-bar .presence-pill{
+  position:relative;display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border-radius:50%;
+  color:#fff;font-size:11px;font-weight:600;letter-spacing:.02em;
+  border:2px solid var(--surface);
+  margin-left:-8px;          /* overlap stack */
+  box-shadow:0 1px 2px rgba(0,0,0,.15);
+}
+.presence-bar .presence-pill:first-of-type{margin-left:0}
+.presence-bar .presence-me-dot{
+  position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;
+  background:#22c55e;border:2px solid var(--surface);
+}
+/* Legacy class names used by the inline presence client embedded in
+ * reports/edit.html. Keep them in sync visually with .presence-pill above
+ * so both code paths look identical until the inline one is retired. */
+.presence-bar .pchip{
+  position:relative;display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border-radius:50%;
+  color:#fff;font-size:11px;font-weight:600;letter-spacing:.02em;
+  border:2px solid var(--surface);margin-left:-8px;
+  box-shadow:0 1px 2px rgba(0,0,0,.15);text-transform:uppercase;
+}
+.presence-bar .pchip:first-of-type{margin-left:0}
+.presence-bar .pchip[data-focused="1"]::after{
+  content:"";position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;
+  border-radius:50%;background:#facc15;border:2px solid var(--surface);
+}
+.presence-bar .pmore{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:28px;height:28px;padding:0 8px;margin-left:-8px;
+  border-radius:999px;background:var(--surface-3);color:var(--text-2);
+  border:2px solid var(--surface);font-size:11px;font-weight:600;
+}
+
+/* ============================================================
+ * VAPT Notes Widget — floating terminal-style scratchpad.
+ *
+ * Lives bottom-right of every authenticated page. Collapsed it's a
+ * `root@vapt:~# notes` pill with a blinking cursor; expanded it's a
+ * faux-terminal panel with title bar, banner, green-on-black note
+ * list, prompt row, and a status bar at the bottom. The whole widget
+ * stays on a hardcoded green/amber palette regardless of the active
+ * app theme — the point is to feel like a separate hacker-shell layer
+ * floating above the normal UI chrome.
+ * ============================================================ */
+
+#vapt-notes-widget{
+  --vnw-bg:     #0a0e0a;
+  --vnw-bg-2:   #111611;
+  --vnw-bg-3:   #1a1f1a;
+  --vnw-fg:     #c8ffc8;
+  --vnw-green:  #00ff88;
+  --vnw-green-dim:#00cc6a;
+  --vnw-amber:  #ffaa00;
+  --vnw-red:    #ff5555;
+  --vnw-faint:  #5a7a5a;
+  --vnw-border: #1f3a1f;
+  --vnw-mono:   ui-monospace, "JetBrains Mono", "Fira Code", "Cascadia Mono",
+                Consolas, "Courier New", monospace;
+
+  position:fixed; right:18px; bottom:18px;
+  z-index:9000;
+  font-family:var(--vnw-mono);
+  color:var(--vnw-fg);
+  max-width:calc(100vw - 36px);
+}
+
+/* ---- Collapsed pill ---- */
+.vnw-pill{
+  display:inline-flex; align-items:center; gap:8px;
+  background:var(--vnw-bg);
+  color:var(--vnw-green);
+  border:1px solid var(--vnw-green-dim);
+  border-radius:999px;
+  padding:9px 16px 9px 14px;
+  font-family:var(--vnw-mono); font-size:12.5px; font-weight:500;
+  cursor:pointer;
+  box-shadow:0 4px 18px rgba(0,255,136,.12), 0 0 0 1px rgba(0,255,136,.05);
+  transition:transform .12s ease, box-shadow .15s ease, color .15s;
+  position:relative;
+}
+.vnw-pill:hover{
+  transform:translateY(-1px);
+  box-shadow:0 6px 22px rgba(0,255,136,.25), 0 0 0 1px rgba(0,255,136,.12);
+}
+.vnw-pill:focus-visible{
+  outline:2px solid var(--vnw-green);
+  outline-offset:2px;
+}
+.vnw-pill-prompt{ color:var(--vnw-faint); }
+.vnw-pill-label{ color:var(--vnw-green); font-weight:600; }
+.vnw-cursor{
+  display:inline-block; width:8px; height:14px; vertical-align:-2px;
+  background:var(--vnw-green);
+  animation:vnwBlink 1.05s steps(2, start) infinite;
+}
+@keyframes vnwBlink{
+  to { background:transparent; box-shadow:0 0 6px var(--vnw-green); }
+}
+.vnw-badge{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:18px; height:18px;
+  padding:0 5px; border-radius:9px;
+  background:var(--vnw-amber); color:#000;
+  font-size:10.5px; font-weight:700;
+  margin-left:4px;
+}
+
+/* ---- Expanded panel ---- */
+.vnw-panel{
+  position:absolute; right:0; bottom:0;
+  width:420px; max-height:min(560px, calc(100vh - 80px));
+  display:flex; flex-direction:column;
+  background:var(--vnw-bg);
+  border:1px solid var(--vnw-green-dim);
+  border-radius:8px;
+  box-shadow:
+    0 16px 40px rgba(0,0,0,.55),
+    0 0 0 1px rgba(0,255,136,.08),
+    0 0 60px rgba(0,255,136,.06);
+  overflow:hidden;
+  /* Subtle CRT-style scanlines + a top vignette — terminal feel
+   * without hurting readability. */
+  background-image:
+    linear-gradient(180deg,
+      rgba(0,255,136,.02) 0%,
+      rgba(0,255,136,0) 40%),
+    repeating-linear-gradient(
+      transparent 0,
+      transparent 2px,
+      rgba(0,255,136,.025) 3px,
+      transparent 4px
+    );
+  animation:vnwPanelIn .14s ease-out;
+}
+@keyframes vnwPanelIn{
+  from { opacity:0; transform:translateY(8px) scale(.985); }
+  to   { opacity:1; transform:translateY(0) scale(1); }
+}
+
+/* Minimise — smooth "drop to the bottom of the screen" exit.
+   The JS adds `.is-minimizing`, waits for this keyframe to finish
+   (animationend) and only THEN hides the panel + reveals the bottom
+   bar, so the user sees the panel physically slide down and fade
+   rather than just blink away. translateY(120%) carries it fully
+   below its own box toward the bottom edge; the slight scale + fade
+   make it feel like it's docking. transform-origin bottom keeps the
+   shrink anchored downward (toward where the bar appears). */
+.vnw-panel.is-minimizing{
+  animation:vnwPanelMinimize .24s cubic-bezier(.4,0,.2,1) forwards;
+  transform-origin:bottom center;
+  pointer-events:none;             /* no clicks mid-animation */
+}
+@keyframes vnwPanelMinimize{
+  from { opacity:1; transform:translateY(0)    scale(1); }
+  to   { opacity:0; transform:translateY(120%) scale(.94); }
+}
+
+/* The bottom bar slides UP into place as the panel drops — the two
+   motions read as one continuous "docked to the bottom" gesture. */
+.vnw-minbar{ animation:vnwMinbarIn .26s cubic-bezier(.4,0,.2,1); }
+@keyframes vnwMinbarIn{
+  from { opacity:0; transform:translateY(100%); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+@media (max-width: 520px){
+  .vnw-panel{ width:calc(100vw - 36px); }
+}
+
+/* Title bar */
+.vnw-titlebar{
+  display:flex; align-items:center; gap:6px;
+  padding:7px 10px;
+  background:var(--vnw-bg-2);
+  border-bottom:1px solid var(--vnw-border);
+  user-select:none;
+}
+.vnw-dot{ width:11px; height:11px; border-radius:50%; }
+.vnw-dot-r{ background:#ff5f56; }
+.vnw-dot-y{ background:#ffbd2e; }
+.vnw-dot-g{ background:#27c93f; }
+.vnw-title{
+  flex:1; font-size:11.5px; color:var(--vnw-faint);
+  text-align:center;
+  letter-spacing:.02em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.vnw-close, .vnw-min{
+  background:none; border:none; cursor:pointer;
+  color:var(--vnw-faint); font-size:18px;
+  line-height:1; padding:0 6px; border-radius:4px;
+  font-family:var(--vnw-mono);
+}
+.vnw-close:hover{ color:var(--vnw-red); background:rgba(255,85,85,.08); }
+.vnw-min{ font-size:20px; font-weight:700; padding-bottom:6px; }
+.vnw-min:hover{ color:var(--vnw-amber); background:rgba(255,170,0,.08); }
+
+/* Body — scrollable note list area */
+.vnw-body{
+  flex:1; overflow-y:auto;
+  padding:10px 14px 6px;
+  background:var(--vnw-bg);
+  outline:none;
+}
+.vnw-body::-webkit-scrollbar{ width:8px; }
+.vnw-body::-webkit-scrollbar-track{ background:transparent; }
+.vnw-body::-webkit-scrollbar-thumb{
+  background:var(--vnw-border); border-radius:4px;
+}
+.vnw-body::-webkit-scrollbar-thumb:hover{ background:var(--vnw-green-dim); }
+
+.vnw-banner{
+  font-family:var(--vnw-mono);
+  font-size:10px; line-height:1.25; color:var(--vnw-green-dim);
+  margin:0 0 8px; padding:0;
+  white-space:pre;
+  overflow-x:auto;
+  opacity:.7;
+}
+
+.vnw-list{
+  list-style:none; padding:0; margin:0;
+  display:flex; flex-direction:column; gap:4px;
+  font-size:12.5px; line-height:1.45;
+}
+.vnw-note{
+  display:grid;
+  grid-template-columns:auto 1fr auto auto;
+  gap:8px; align-items:start;
+  padding:5px 6px; border-radius:4px;
+  transition:background .1s;
+}
+.vnw-note:hover{ background:var(--vnw-bg-3); }
+.vnw-note.is-done .vnw-note-text{
+  color:var(--vnw-faint); text-decoration:line-through;
+}
+.vnw-note.is-done .vnw-note-check{ color:var(--vnw-green-dim); }
+.vnw-note-check{
+  background:none; border:none; cursor:pointer;
+  color:var(--vnw-amber); font-family:var(--vnw-mono);
+  font-size:13px; padding:0; line-height:1.45;
+  user-select:none;
+}
+.vnw-note-check:hover{ color:var(--vnw-green); }
+.vnw-note-text{
+  color:var(--vnw-fg); white-space:pre-wrap; word-break:break-word;
+  font-family:var(--vnw-mono);
+}
+.vnw-note-meta{
+  color:var(--vnw-faint); font-size:10.5px;
+  display:flex; gap:6px; align-items:center;
+  white-space:nowrap;
+}
+.vnw-note-del{
+  background:none; border:none; cursor:pointer;
+  color:var(--vnw-faint); font-family:var(--vnw-mono);
+  font-size:13px; padding:0 2px; opacity:0;
+  transition:opacity .12s, color .12s;
+}
+.vnw-note:hover .vnw-note-del{ opacity:1; }
+.vnw-note-del:hover{ color:var(--vnw-red); }
+
+.vnw-empty{
+  margin:8px 0 0; font-size:12px;
+}
+.vnw-faint{ color:var(--vnw-faint); }
+
+/* Prompt row */
+.vnw-prompt-row{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 12px;
+  border-top:1px solid var(--vnw-border);
+  background:var(--vnw-bg-2);
+}
+.vnw-prompt-sigil{
+  color:var(--vnw-green); font-weight:700;
+  font-family:var(--vnw-mono); font-size:13px;
+}
+.vnw-input{
+  flex:1; background:transparent; border:none; outline:none;
+  color:var(--vnw-fg);
+  font-family:var(--vnw-mono); font-size:13px;
+  padding:4px 0; margin:0;
+  caret-color:var(--vnw-green);
+}
+.vnw-input::placeholder{
+  color:var(--vnw-faint); font-style:italic;
+}
+
+/* Status bar */
+.vnw-statusbar{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:5px 10px;
+  background:#000;
+  border-top:1px solid var(--vnw-border);
+  font-size:10px; color:var(--vnw-faint);
+  letter-spacing:.02em;
+}
+.vnw-statusbar kbd{
+  background:var(--vnw-bg-3); color:var(--vnw-green-dim);
+  border:1px solid var(--vnw-border); border-radius:3px;
+  padding:0 4px; font-family:var(--vnw-mono); font-size:10px;
+  margin:0 1px;
+}
+.vnw-statusbar .vnw-status-left.is-err{ color:var(--vnw-red); }
+.vnw-statusbar .vnw-status-left.is-ok { color:var(--vnw-green); }
+
+/* Command-output lines printed into the body (e.g. `help` output). */
+.vnw-line{
+  font-family:var(--vnw-mono); font-size:12px;
+  color:var(--vnw-green-dim);
+  padding:1px 0;
+  white-space:pre-wrap;
+}
+.vnw-line.is-err{ color:var(--vnw-red); }
+
+#vapt-notes-widget[data-state="expanded"] .vnw-pill{ display:none; }
+/* When the panel is open OR minimized, the floating round pill must
+   not also show — only one representation of the widget at a time. */
+#vapt-notes-widget[data-state="minimized"] .vnw-pill{ display:none; }
+#vapt-notes-widget[data-state="minimized"] .vnw-panel{ display:none; }
+
+/* ---- Minimized bar: a slim dock pinned to the bottom edge of the
+   viewport. position:fixed against the viewport (NOT absolute inside
+   the bottom-right widget container) so it spans across the bottom
+   like a taskbar entry, which is what the user asked for: "minimise
+   it into a single bar to the bottom of the screen". The widget
+   container is position:fixed bottom-right; we break the bar out of
+   that anchor with its own fixed positioning + left:0. */
+.vnw-minbar{
+  position:fixed; left:0; right:0; bottom:0;
+  z-index:9001;                 /* above the panel's container */
+  display:flex; align-items:center; gap:10px;
+  width:100vw;
+  padding:8px 18px;
+  background:var(--vnw-bg-2);
+  color:var(--vnw-green);
+  border:none;
+  border-top:1px solid var(--vnw-green-dim);
+  box-shadow:0 -4px 18px rgba(0,255,136,.12);
+  font-family:var(--vnw-mono); font-size:12.5px;
+  cursor:pointer;
+  text-align:left;
+}
+.vnw-minbar:hover{
+  background:var(--vnw-bg-3);
+  box-shadow:0 -6px 22px rgba(0,255,136,.22);
+}
+.vnw-minbar:focus-visible{
+  outline:2px solid var(--vnw-green); outline-offset:-2px;
+}
+.vnw-minbar-sigil{ color:var(--vnw-faint); }
+.vnw-minbar-label{ color:var(--vnw-green); font-weight:600; }
+.vnw-minbar-restore{
+  margin-left:auto; color:var(--vnw-amber);
+  font-weight:700; letter-spacing:.03em;
+}
+
+@media (prefers-reduced-motion: reduce){
+  .vnw-cursor{ animation:none }
+  .vnw-panel{ animation:none }
+  /* No slide animations either — the JS `setTimeout(finish, 320)`
+     safety net still completes the minimise handoff since
+     `animationend` won't fire when the keyframe is suppressed. */
+  .vnw-panel.is-minimizing{ animation:none; opacity:0 }
+  .vnw-minbar{ animation:none }
+}
+
+/* Ensure [hidden] attribute always hides these elements even though
+ * .vnw-panel{display:flex} and .vnw-minbar{display:flex} have the
+ * same specificity (0,1,0) as the UA stylesheet [hidden]{display:none}.
+ * Author styles beat UA styles in the cascade, so without this rule
+ * those elements render as invisible overlays when their hidden
+ * attribute is set — intercepting clicks on page content beneath them. */
+.vnw-panel[hidden],
+.vnw-minbar[hidden] { display: none !important; }

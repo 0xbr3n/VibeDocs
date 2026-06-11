@@ -1,0 +1,434 @@
+{% extends "base.html" %}
+{% block title %}Recurring VA scan pipeline — VibeDocs{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Recurring VA scan pipeline</h1>
+    <p class="page-sub">
+      Process this quarter's Nessus exports. Optionally subtract last quarter's
+      risk-accepted findings (xlsx / xls / csv / pdf) and / or the prior tracker.
+      You get back a ZIP of categorised xlsx files, audit reports, and a
+      summary.txt. <a href="/toolkit" class="link small">← back to toolkit</a>
+    </p>
+  </div>
+</div>
+
+<section class="card" style="margin-top:18px">
+  <div style="padding:18px">
+    <h3 style="margin:0 0 6px 0;font-size:14px">1 · Nessus CSV scans (required)</h3>
+    <p class="muted small" style="margin:0 0 10px">
+      Drop every <code>.csv</code> export from this quarter's scan. You can
+      add multiple files — the pipeline merges them automatically.
+    </p>
+    <div id="var-dz-csv" class="var-dz" tabindex="0" role="button"
+         aria-label="Drop Nessus CSV files">
+      <div class="var-dz-inner">
+        <div class="var-dz-icon">📄</div>
+        <div class="var-dz-title">Drop <code>.csv</code> files here</div>
+        <div class="var-dz-sub">up to 50 files · 100 MB each · 500 MB total</div>
+      </div>
+      <input type="file" id="var-input-csv" accept=".csv" multiple hidden>
+    </div>
+    <div id="var-list-csv" class="var-filelist" hidden></div>
+  </div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <div style="padding:18px">
+    <h3 style="margin:0 0 6px 0;font-size:14px">2 · Risk-accept doc (optional)</h3>
+    <p class="muted small" style="margin:0 0 10px">
+      Last quarter's management-signed risk-accept document. Accepts
+      <code>.xlsx</code>, <code>.xls</code>, <code>.csv</code>, or
+      <code>.pdf</code>. Skip this if there's nothing to subtract.
+    </p>
+    <div id="var-dz-accept" class="var-dz" tabindex="0" role="button"
+         aria-label="Drop risk-accept files">
+      <div class="var-dz-inner">
+        <div class="var-dz-icon">✅</div>
+        <div class="var-dz-title">Drop risk-accept files</div>
+        <div class="var-dz-sub">multiple .xlsx / .xls / .csv / .pdf · merged automatically</div>
+      </div>
+      <input type="file" id="var-input-accept"
+             accept=".xlsx,.xls,.csv,.pdf" multiple hidden>
+    </div>
+    <div id="var-list-accept" class="var-filelist" hidden></div>
+  </div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <div style="padding:18px">
+    <h3 style="margin:0 0 6px 0;font-size:14px">3 · Previous tracker (optional)</h3>
+    <p class="muted small" style="margin:0 0 10px">
+      Last quarter's tracker workbook. The pipeline scans the comment column
+      for keywords like "management accepted" / "risk accepted" and adds those
+      rows to the subtraction set.
+    </p>
+    <div id="var-dz-tracker" class="var-dz" tabindex="0" role="button"
+         aria-label="Drop previous tracker files">
+      <div class="var-dz-inner">
+        <div class="var-dz-icon">📓</div>
+        <div class="var-dz-title">Drop previous tracker files</div>
+        <div class="var-dz-sub">multiple .xlsx / .xls · comment columns merged across all sheets</div>
+      </div>
+      <input type="file" id="var-input-tracker"
+             accept=".xlsx,.xls" multiple hidden>
+    </div>
+    <div id="var-list-tracker" class="var-filelist" hidden></div>
+  </div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <div style="padding:18px">
+    <h3 style="margin:0 0 6px 0;font-size:14px">4 · Options</h3>
+    <label style="display:flex;flex-direction:column;gap:4px;max-width:420px">
+      <span class="small">Custom comments column name (optional)</span>
+      <input id="var-custom-col" type="text"
+             placeholder='e.g. "VibeDocs Comments"' maxlength="60">
+      <span class="muted small">
+        Adds a writable column right after the standard "Comments" in every
+        output xlsx. Leave blank to skip.
+      </span>
+    </label>
+
+    {# The default-value field is wired client-side to disable + grey out
+       whenever the custom-column name above is blank — passing a default
+       only makes sense once you've named the column. We let the user type
+       multi-line text since the column is meant to hold short paragraph
+       comments like "Per VibeDocs recommendation, …". #}
+    <label id="var-custom-default-wrap"
+           style="display:flex;flex-direction:column;gap:4px;max-width:620px;
+                  margin-top:14px;opacity:.55;transition:opacity .15s">
+      <span class="small">Default value for the custom column (optional)</span>
+      <textarea id="var-custom-default" rows="3" maxlength="800"
+                placeholder='e.g. "Per VibeDocs recommendation, this finding remains open pending remediation."'
+                disabled></textarea>
+      <span class="muted small">
+        Pre-fills every row of the custom column above with this value, in
+        every output xlsx. Leave blank to keep cells empty. Becomes editable
+        once you've named a custom column.
+      </span>
+    </label>
+
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer">
+      <input id="var-group-ips" type="checkbox">
+      <span>Group same finding+port across hosts in the by-category files
+        <span class="muted small">(collapses N near-identical rows into one with a comma-joined Host cell)</span>
+      </span>
+    </label>
+  </div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <div style="padding:18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+    <p class="muted small" id="var-status" style="margin:0">Awaiting upload.</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn-secondary btn-sm" id="var-clear-btn" type="button">Clear all</button>
+      <button class="btn-primary btn-sm"   id="var-run-btn"   type="button">
+        ▶ Run pipeline · download ZIP
+      </button>
+    </div>
+  </div>
+
+  <div id="var-summary" class="var-summary" hidden>
+    <h3 style="margin:0 0 8px 0;font-size:14px">Last run</h3>
+    <div class="var-stat-grid">
+      <div class="var-stat"><div class="var-stat-v" id="var-s-current">0</div>
+        <div class="var-stat-l">Total current rows</div></div>
+      <div class="var-stat"><div class="var-stat-v" id="var-s-after">0</div>
+        <div class="var-stat-l">After subtract</div></div>
+      <div class="var-stat"><div class="var-stat-v" id="var-s-removed">0</div>
+        <div class="var-stat-l">Risk-accepted removed</div></div>
+      <div class="var-stat"><div class="var-stat-v" id="var-s-files">0</div>
+        <div class="var-stat-l">Output files</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="card" style="margin-top:18px">
+  <header class="card-h"><h2 style="margin:0">What's in the ZIP</h2></header>
+  <div style="padding:0 18px 16px;line-height:1.55;font-size:13.5px">
+    <ul style="margin:8px 0 0;padding-left:20px">
+      <li><strong>remaining_findings.xlsx</strong> — current scan minus
+        anything matched to a risk-accepted item, categorised.</li>
+      <li><strong>risk_accepted_removed.xlsx</strong> — what was subtracted,
+        with evidence columns (source, keyword, comment cell, comment text).</li>
+      <li><strong>by_category/*.xlsx</strong> — one workbook per category
+        (Outdated Software & Patches, SSL Misconfigurations, Information
+        Disclosure, Default / Weak Credentials, Web Application,
+        Uncategorized). Friendly column names + writable Status / Comments.</li>
+      <li><strong>considered_not_removed.xlsx</strong> — accepted-side rows
+        the matcher considered but didn't subtract, plus near-miss diagnostics
+        so you can triage "why didn't this drop".</li>
+      <li><strong>audit_remaining_vs_accepted.xlsx</strong> — suspect rows in
+        the remaining set that have an accepted near-miss on the same host
+        (catches column-mapping mistakes on the accepted side).</li>
+      <li><strong>match_preview.xlsx</strong> — borderline subtractions for
+        spot-checking.</li>
+      <li><strong>summary.txt</strong> — top-level numbers + category counts.</li>
+    </ul>
+    <p class="muted small" style="margin-top:10px">
+      The <code>plugin_id_categories.json</code> learning map is shared across
+      every consultant who runs the tool — high-confidence categorisations
+      from previous runs are skipped at the rule-engine step. Edit by hand to
+      correct mistakes (it lives under <code>uploads/toolkit/va_recurring/</code>
+      on the server).
+    </p>
+  </div>
+</section>
+
+<style>
+.var-dz {
+  border:2px dashed var(--border); border-radius:10px;
+  padding:22px 18px; text-align:center; cursor:pointer;
+  background:var(--surface-2);
+  transition:border-color .15s, background .15s;
+}
+.var-dz:hover, .var-dz:focus-visible {
+  border-color:var(--accent-dark); background:var(--accent-soft); outline:none;
+}
+.var-dz.is-dragover { border-color:var(--accent-dark); background:var(--accent-soft) }
+.var-dz-icon  { font-size:32px; line-height:1; margin-bottom:2px }
+.var-dz-title { font-weight:600; font-size:14px }
+.var-dz-sub   { color:var(--text-2); font-size:12.5px; margin-top:2px }
+.var-filelist { margin-top:12px; padding:6px 0; border-top:1px dashed var(--border) }
+.var-file-row { display:flex; gap:10px; align-items:center; padding:4px 0; font-size:13px }
+.var-file-row .var-file-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.var-file-row .var-file-size { color:var(--text-2); font-size:12px; min-width:70px; text-align:right }
+.var-file-row .var-file-x    { background:none; border:0; cursor:pointer; color:var(--err-fg); font-size:16px; padding:0 4px }
+.var-summary  { padding:0 18px 18px }
+.var-stat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px }
+.var-stat     { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px }
+.var-stat-v   { font-size:22px; font-weight:700 }
+.var-stat-l   { color:var(--text-2); font-size:12px; margin-top:2px }
+#var-status.is-ok  { color:var(--ok-fg) }
+#var-status.is-err { color:var(--err-fg) }
+input#var-custom-col {
+  padding:8px 10px; border:1px solid var(--border); border-radius:6px;
+  background:var(--surface); color:var(--text); font-size:13.5px;
+}
+</style>
+
+<script nonce="{{ request.state.csp_nonce }}">
+(function(){
+  // Each of the three upload zones has its own staged-files array.
+  // The CSV zone allows multiple files; the other two allow exactly
+  // one (re-dropping replaces). We keep the wiring symmetric so the
+  // code is small and adding a 4th drop zone later is one config line.
+  const zones = [
+    {
+      multi: true,
+      dzId:  "var-dz-csv",     inputId: "var-input-csv",   listId: "var-list-csv",
+      accept: [".csv"],         empty: "Awaiting CSV upload",
+      staged: [],
+    },
+    {
+      // Multi-file: server-side the library's load_riskaccept_folder
+      // fans out across every uploaded file and concatenates the
+      // canonical rows + dedupes — consultants can hand us a whole
+      // quarter's worth of risk-accept docs in one drop.
+      multi: true,
+      dzId:  "var-dz-accept",  inputId: "var-input-accept", listId: "var-list-accept",
+      accept: [".xlsx",".xls",".csv",".pdf"],
+      staged: [],
+    },
+    {
+      // Same story for prev trackers — the loader scans every comment
+      // column in every sheet of every uploaded workbook.
+      multi: true,
+      dzId:  "var-dz-tracker", inputId: "var-input-tracker", listId: "var-list-tracker",
+      accept: [".xlsx",".xls"],
+      staged: [],
+    },
+  ];
+
+  function esc(s){return(s==null?"":String(s)).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+  function fmtSize(n){
+    if (n < 1024)        return `${n} B`;
+    if (n < 1024*1024)   return `${(n/1024).toFixed(1)} KB`;
+    return `${(n/1024/1024).toFixed(1)} MB`;
+  }
+
+  const statusEl = document.getElementById("var-status");
+  function setStatus(text, level){
+    statusEl.textContent = text;
+    statusEl.classList.remove("is-ok","is-err");
+    if (level === "ok")  statusEl.classList.add("is-ok");
+    if (level === "err") statusEl.classList.add("is-err");
+  }
+
+  function isAcceptable(zone, fileName){
+    const lower = (fileName || "").toLowerCase();
+    return zone.accept.some(ext => lower.endsWith(ext));
+  }
+
+  function renderZone(zone){
+    const list = document.getElementById(zone.listId);
+    list.innerHTML = "";
+    if (!zone.staged.length){ list.hidden = true; return; }
+    list.hidden = false;
+    for (let i = 0; i < zone.staged.length; i++){
+      const f = zone.staged[i];
+      const row = document.createElement("div");
+      row.className = "var-file-row";
+      row.innerHTML = `
+        <span class="var-file-name" title="${esc(f.name)}">📎 ${esc(f.name)}</span>
+        <span class="var-file-size">${fmtSize(f.size)}</span>
+        <button class="var-file-x" type="button" aria-label="Remove" title="Remove">×</button>
+      `;
+      row.querySelector(".var-file-x").addEventListener("click", () => {
+        zone.staged.splice(i, 1);
+        renderZone(zone);
+      });
+      list.appendChild(row);
+    }
+  }
+
+  function wireZone(zone){
+    const dz    = document.getElementById(zone.dzId);
+    const input = document.getElementById(zone.inputId);
+
+    function stage(filelike){
+      const incoming = Array.from(filelike || []);
+      const bad = incoming.filter(f => !isAcceptable(zone, f.name));
+      if (bad.length){
+        setStatus(`${bad[0].name}: wrong file type for this zone.`, "err");
+      }
+      const accepted = incoming.filter(f => isAcceptable(zone, f.name));
+      if (!accepted.length) return;
+      if (!zone.multi){
+        zone.staged = [accepted[accepted.length - 1]];
+      } else {
+        for (const f of accepted){
+          const exists = zone.staged.some(s => s.name === f.name && s.size === f.size);
+          if (!exists) zone.staged.push(f);
+        }
+      }
+      renderZone(zone);
+      setStatus("Files ready.");
+    }
+
+    ["dragenter","dragover"].forEach(ev => {
+      dz.addEventListener(ev, e => {
+        e.preventDefault();
+        dz.classList.add("is-dragover");
+      });
+    });
+    ["dragleave","drop"].forEach(ev => {
+      dz.addEventListener(ev, e => {
+        e.preventDefault();
+        dz.classList.remove("is-dragover");
+      });
+    });
+    dz.addEventListener("drop", e => stage(e.dataTransfer && e.dataTransfer.files));
+    dz.addEventListener("click", () => input.click());
+    dz.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " "){ e.preventDefault(); input.click(); }
+    });
+    input.addEventListener("change", () => {
+      stage(input.files);
+      input.value = "";
+    });
+  }
+
+  zones.forEach(wireZone);
+
+  // ----- Default-value enable/disable wiring -----
+  // The "default value for the custom column" textarea only makes sense
+  // once the column itself has been named. We disable + grey it out
+  // when the name field is empty, and clear the value too so a stale
+  // default doesn't sneak into the submit when the user later types
+  // a name. Listening on `input` rather than `change` so the toggle
+  // reacts as the user types instead of waiting for focus loss.
+  const customColInput      = document.getElementById("var-custom-col");
+  const customDefaultInput  = document.getElementById("var-custom-default");
+  const customDefaultWrap   = document.getElementById("var-custom-default-wrap");
+  function syncDefaultFieldState(){
+    const enabled = !!(customColInput.value || "").trim();
+    customDefaultInput.disabled = !enabled;
+    customDefaultWrap.style.opacity = enabled ? "1" : ".55";
+    if (!enabled) customDefaultInput.value = "";
+  }
+  customColInput.addEventListener("input", syncDefaultFieldState);
+  syncDefaultFieldState();
+
+  // ----- clear / run -----
+  document.getElementById("var-clear-btn").addEventListener("click", () => {
+    for (const z of zones){ z.staged = []; renderZone(z); }
+    document.getElementById("var-custom-col").value = "";
+    document.getElementById("var-custom-default").value = "";
+    document.getElementById("var-group-ips").checked = false;
+    document.getElementById("var-summary").hidden = true;
+    syncDefaultFieldState();
+    setStatus("Cleared.");
+  });
+
+  document.getElementById("var-run-btn").addEventListener("click", async () => {
+    const csvs     = zones[0].staged;
+    const accepts  = zones[1].staged;
+    const trackers = zones[2].staged;
+    if (!csvs.length){
+      setStatus("Drop at least one Nessus CSV in zone 1 first.", "err");
+      return;
+    }
+    const fd = new FormData();
+    for (const f of csvs)     fd.append("current_csvs", f, f.name);
+    for (const f of accepts)  fd.append("risk_accept",  f, f.name);
+    for (const f of trackers) fd.append("prev_tracker", f, f.name);
+    fd.append("custom_comment_col",
+              document.getElementById("var-custom-col").value || "");
+    fd.append("custom_comment_default",
+              document.getElementById("var-custom-default").value || "");
+    fd.append("group_ips_in_by_category",
+              document.getElementById("var-group-ips").checked ? "true" : "false");
+
+    const runBtn = document.getElementById("var-run-btn");
+    runBtn.disabled = true;
+    setStatus("Running pipeline… this can take a minute on large scans.");
+
+    try {
+      const r = await fetch("/api/toolkit/va-recurring/run", {
+        method: "POST", credentials: "include", body: fd,
+      });
+      if (!r.ok){
+        let detail = r.statusText;
+        try { detail = (await r.json()).detail || detail; } catch(_){}
+        throw new Error(detail);
+      }
+      // Pull stats out of response headers BEFORE consuming the body
+      // (browser locks the stream after blob()).
+      const stats = {
+        current:  r.headers.get("x-total-current") || "0",
+        after:    r.headers.get("x-total-after-subtract") || "0",
+        removed:  r.headers.get("x-removed") || "0",
+        files:    r.headers.get("x-output-files") || "0",
+      };
+      const cd = r.headers.get("content-disposition") || "";
+      let suggested = "va_recurring.zip";
+      const m = cd.match(/filename="([^"]+)"/);
+      if (m) suggested = m[1];
+
+      const blob = await r.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = suggested;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      document.getElementById("var-s-current").textContent = stats.current;
+      document.getElementById("var-s-after").textContent   = stats.after;
+      document.getElementById("var-s-removed").textContent = stats.removed;
+      document.getElementById("var-s-files").textContent   = stats.files;
+      document.getElementById("var-summary").hidden = false;
+      setStatus(`Pipeline complete · ${stats.after} findings remain · ZIP downloaded.`, "ok");
+    } catch (err){
+      setStatus("Run failed: " + (err.message || err), "err");
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

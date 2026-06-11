@@ -1,0 +1,15 @@
+.env
+.env.standalone
+*.pyc
+__pycache__/
+*.egg-info/
+.venv/
+venv/
+.idea/
+.vscode/
+*.log
+data/
+uploads/
+reports/
+node_modules/
+.DS_Store

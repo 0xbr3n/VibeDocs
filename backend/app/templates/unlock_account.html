@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Unlock account - VAPT Reporter{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="card auth-card">
+    <h1 style="margin:0 0 14px;font-size:18px">🔓 Unlock your account</h1>
+
+    <div id="unlock-status" style="display:none"></div>
+
+    <div id="unlock-pending">
+      <p class="muted small" style="margin:0 0 16px">
+        Click the button below to unlock your account and regain access to VAPT Reporter.
+      </p>
+      <button class="btn-primary lg" id="unlock-btn" type="button"
+              {% if not token %}disabled{% endif %}>
+        Unlock my account
+      </button>
+      {% if not token %}
+      <p style="color:var(--err-fg);font-size:13px;margin-top:10px">
+        ⚠ No unlock token found. Please use the link from your email.
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="divider"></div>
+    <p class="muted small" style="margin:0;text-align:center">
+      <a href="/login" style="color:var(--accent)">← Back to sign in</a>
+    </p>
+  </div>
+</div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+(function(){
+  const token = {{ token | tojson }};
+  const btn = document.getElementById("unlock-btn");
+  const pending = document.getElementById("unlock-pending");
+  const statusEl = document.getElementById("unlock-status");
+
+  function showStatus(ok, msg){
+    statusEl.style.display = "";
+    statusEl.style.background = ok ? "var(--ok-bg,#16653422)" : "var(--err-bg,#7f1d1d22)";
+    statusEl.style.color = ok ? "var(--ok-fg,#7C5CFC)" : "var(--err-fg,#ef4444)";
+    statusEl.style.padding = "10px 12px";
+    statusEl.style.borderRadius = "8px";
+    statusEl.style.fontSize = "13px";
+    statusEl.style.marginBottom = "12px";
+    statusEl.textContent = (ok ? "✓ " : "⚠ ") + msg;
+    if (ok){
+      pending.style.display = "none";
+      const link = document.createElement("p");
+      link.className = "muted small";
+      link.style.cssText = "margin-top:12px;text-align:center";
+      link.innerHTML = '<a href="/login" style="color:var(--accent)">→ Sign in now</a>';
+      statusEl.after(link);
+    }
+  }
+
+  if (!token){
+    btn.disabled = true;
+    return;
+  }
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.textContent = "Unlocking…";
+    try {
+      const r = await fetch("/api/auth/unlock?token=" + encodeURIComponent(token), {
+        method: "POST",
+        credentials: "include",
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok){
+        showStatus(true, d.message || "Your account has been unlocked. You can now sign in.");
+      } else {
+        showStatus(false, d.detail || "This unlock link is invalid or has expired. Ask your administrator to send a new one.");
+        btn.disabled = false;
+        btn.textContent = "Unlock my account";
+      }
+    } catch(e) {
+      showStatus(false, "Network error: " + e.message + ". Please try again.");
+      btn.disabled = false;
+      btn.textContent = "Unlock my account";
+    }
+  });
+})();
+</script>
+{% endblock %}

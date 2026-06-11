@@ -64,7 +64,7 @@
 |---|---|
 | ![Library](docs/screenshots/03-library.png) | ![CVSS](docs/screenshots/04-cvss.png) |
 
-| Scan import & categorization | Generated Word report |
+| Infra VA Scans Import & Categorization | Generated Word report |
 |---|---|
 | ![Scan import](docs/screenshots/05-scan-import.png) | ![Word output](docs/screenshots/06-word-output.png) |
 

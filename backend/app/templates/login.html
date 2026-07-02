@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Sign in - VibeDocs{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="card auth-card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <span class="brand-mark" aria-label="VibeDocs">
+        VibeDocs<span class="dot"></span>
+      </span>
+      <div>
+        <h1 style="margin:0;font-size:18px">Report Generator</h1>
+        <p class="muted small" style="margin:1px 0 0">VibeDocs · A vibecoded report generator</p>
+      </div>
+    </div>
+
+    {% if error %}
+    <div style="background:var(--err-bg);color:var(--err-fg);border:1px solid #fecaca;
+                padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;
+                display:flex;align-items:center;gap:8px">
+      <span>⚠</span>{{ error }}
+    </div>
+    {% endif %}
+
+    {# ── Azure AD SSO button ─────────────────────────────────────────────── #}
+    {% if sso_enabled %}
+    <p class="muted small" style="margin:0 0 10px">Sign in with your VibeDocs account.</p>
+    <a href="/auth/sso/login"
+       style="display:flex;align-items:center;justify-content:center;gap:10px;
+              width:100%;padding:10px 16px;border-radius:6px;border:1px solid #8c8c8c;
+              background:#fff;color:#1a1a1a;font-size:14px;font-weight:600;
+              text-decoration:none;box-sizing:border-box;
+              transition:background .15s,box-shadow .15s"
+       onmouseover="this.style.background='#f3f3f3';this.style.boxShadow='0 2px 6px rgba(0,0,0,.15)'"
+       onmouseout="this.style.background='#fff';this.style.boxShadow='none'">
+      {# Microsoft logo — four coloured squares #}
+      <svg width="20" height="20" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect x="1"  y="1"  width="9" height="9" fill="#f25022"/>
+        <rect x="11" y="1"  width="9" height="9" fill="#00a4ef"/>
+        <rect x="1"  y="11" width="9" height="9" fill="#7fba00"/>
+        <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+      </svg>
+      Sign in with Microsoft
+    </a>
+
+    {% if show_local_login %}
+    <div class="divider" style="margin:20px 0 16px;position:relative;text-align:center">
+      <span style="position:relative;z-index:1;background:var(--card-bg);
+                   padding:0 10px;font-size:11px;color:var(--text-2)">
+        or sign in with username
+      </span>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {# ── Local username + password form ──────────────────────────────────── #}
+    {% if show_local_login or not sso_enabled %}
+    <form method="post" action="/login">
+      {% if not sso_enabled %}
+      <p class="muted small" style="margin:0 0 4px">Sign in to continue.</p>
+      {% endif %}
+      <label>
+        Username
+        <input type="text" name="username" autocomplete="username" required
+               {% if not sso_enabled %}autofocus{% endif %}>
+      </label>
+      <label>
+        Password
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button class="btn-primary lg" type="submit">Sign in →</button>
+      <p class="muted small" style="margin:8px 0 0;text-align:right">
+        <a href="/forgot-password" style="color:var(--accent)">Forgot password?</a>
+      </p>
+    </form>
+    {% endif %}
+
+    <div class="divider" style="margin:16px 0"></div>
+    <div class="muted small" style="display:flex;align-items:center;gap:6px;justify-content:center">
+      🔒 VPN required · 2FA enforced for all accounts
+    </div>
+
+    {% if not sso_enabled %}
+    <p class="muted small" style="margin:14px 0 0;text-align:center">
+      First-time bootstrap: <code>admin</code> / <code>change_me_now</code><br>
+      <span style="color:var(--err-fg)">Change it immediately after first login.</span>
+    </p>
+    {% endif %}
+
+    {% if not sso_enabled or show_local_login %}
+    <div class="divider" style="margin:20px 0 16px"></div>
+    <p class="muted small" style="margin:0;text-align:center">
+      Don't have an account? <a href="/register" style="color:var(--accent);text-decoration:none;font-weight:500">Create one here</a>
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

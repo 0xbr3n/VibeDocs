@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Projects{% endblock %}
+{% block body_class %}is-wide{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Projects</h1>
+  <div class="actions">
+    <a class="btn-primary" href="/projects/new">+ New project</a>
+  </div>
+</div>
+
+<section class="card">
+{% if projects %}
+  <table class="data">
+    <thead>
+      <tr><th>Name</th><th>Client</th><th>Sector</th><th>Status</th><th>Created</th></tr>
+    </thead>
+    <tbody>
+      {% for p in projects %}
+      <tr>
+        <td><a href="/projects/{{ p.id }}">{{ p.name }}</a></td>
+        <td>{{ p.client_name }}</td>
+        <td>{{ p.sector or "-" }}</td>
+        <td><span class="status status-{{ p.status }}">{{ p.status }}</span></td>
+        <td class="muted">{{ p.created_at.strftime("%Y-%m-%d") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p class="empty">No projects yet.</p>
+{% endif %}
+</section>
+{% endblock %}

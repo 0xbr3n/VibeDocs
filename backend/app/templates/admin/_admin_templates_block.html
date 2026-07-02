@@ -1,0 +1,1304 @@
+{# ============================================================
+   Admin Templates Block — partial.
+   Contains the three admin tabs (Report Templates / Email Templates
+   / Placeholder Guide) plus their CSS and JS. NO page header (the
+   parent page owns its own H1 + top buttons).
+   Included from:
+     * `admin/templates.html` — the legacy admin-only standalone page,
+       kept around as a deep-linkable URL for admins who bookmarked it.
+     * `templates/list.html` — the unified Templates page. When the
+       viewer is an admin, the page renders four tabs and wires this
+       block into the bottom three.
+   The block's tabs use `.adm-tab` / `.adm-pane` (NOT `.cvss-tab`) so
+   the parent's outer tab strip can stay on `.tpl-outer-tab` without
+   any selector cross-talk.
+   ============================================================ #}
+
+<div class="adm-tabs" role="tablist" style="margin-top:18px">
+  <button class="adm-tab active" data-adm-tab="assign" role="tab" aria-selected="true">
+    Tasking Assignments
+  </button>
+  <button class="adm-tab" data-adm-tab="report" role="tab">
+    Report Templates
+  </button>
+  <button class="adm-tab" data-adm-tab="tracker" role="tab">
+    Tracker Templates
+  </button>
+  <button class="adm-tab" data-adm-tab="email" role="tab">
+    Email Templates
+  </button>
+  <button class="adm-tab" data-adm-tab="guide" role="tab">
+    Placeholder Guide
+  </button>
+</div>
+
+<!-- ============================================================
+     TAB — Tasking Assignments (central VAPT type → templates map)
+     ============================================================ -->
+<section class="card adm-pane" id="adm-pane-assign">
+  <header class="card-h">
+    <h2>VAPT tasking assignments</h2>
+    <span class="muted small" id="adm-assign-count" style="align-self:center">Loading…</span>
+  </header>
+  <p class="muted small" style="padding:0 16px;margin:0 0 8px">
+    Central map of every VAPT tasking type to the Word report template
+    and Excel tracker it uses. Change either side from the dropdowns
+    below — the next report generated against that tasking picks up
+    the new file. Existing reports keep their previous binding so
+    in-flight deliverables are not affected.
+  </p>
+  <div style="padding:0 16px 16px;overflow-x:auto">
+    <table class="data" id="adm-assign-table">
+      <thead>
+        <tr>
+          <th style="width:36px">#</th>
+          <th>VAPT tasking type</th>
+          <th style="width:90px">Code</th>
+          <th title="The Word .docx the renderer uses for reports of this tasking. Change it from the Report Templates tab.">Word template</th>
+          <th title="The Excel .xlsx the Export Tracker action uses. Empty = legacy filename-pattern routing.">Excel tracker</th>
+          <th style="width:90px">Status</th>
+        </tr>
+      </thead>
+      <tbody id="adm-assign-tbody">
+        <tr><td colspan="6" class="muted" style="text-align:center;padding:24px">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================
+     TAB — Master Report Templates
+     ============================================================ -->
+<section class="card adm-pane is-hidden" id="adm-pane-report">
+  <header class="card-h">
+    <h2>Master report templates</h2>
+    <div class="actions" style="gap:6px">
+      <button class="btn-secondary btn-sm" id="adm-cleanup-btn"
+              title="Delete orphaned hash-named .docx files that are no longer bound to any template row. Keeps only the active template + canonical *_template.docx files.">
+        🗑 Clean up old files
+      </button>
+      <button class="btn-secondary btn-sm" id="adm-diagnose-btn"
+              title="Show which VibeDocs source backs each template + the file size on disk">
+        🔍 Diagnose
+      </button>
+      <button class="btn-secondary btn-sm" id="adm-reinject-btn"
+              title="Apply Jinja2 placeholder injection to all templates that don't already have it. Use this after uploading templates from before the auto-inject feature, or after manually replacing files.">
+        ⚡ Re-inject placeholders
+      </button>
+      <button class="btn-primary btn-sm" id="adm-regen-btn"
+              title="Re-run the VibeDocs source → master template transformer for every type">
+        ↻ Regenerate from VibeDocs sources
+      </button>
+      <span class="muted small" id="adm-rtpl-count" style="align-self:center">Loading…</span>
+    </div>
+  </header>
+  <p class="muted small" style="padding:0 16px;margin:0 0 8px">
+    Each row is a master VAPT type. The <strong>Active</strong> toggle
+    controls whether the type appears in the consultant's report-creation
+    dropdown. The <strong>Source</strong> column shows which VibeDocs
+    template the renderer derives from on every container start.
+    Uploading a new <code>.docx</code> here replaces the system-wide
+    template for every consultant — existing reports keep using the
+    template they were bound to, so in-flight deliverables are safe.
+  </p>
+  <div style="padding:0 16px 16px;overflow-x:auto">
+    <table class="data" id="adm-rtpl-table">
+      <thead>
+        <tr>
+          <th style="width:36px">#</th>
+          <th>Name</th>
+          <th>Code</th>
+          <th>DOCX file</th>
+          <th>VibeDocs source</th>
+          <th style="width:90px">Size</th>
+          <th style="width:100px">Active</th>
+          <th style="width:310px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="adm-rtpl-tbody">
+        <tr><td colspan="8" class="muted" style="text-align:center;padding:24px">
+          Loading templates…
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================
+     TAB — Master Tracker Templates (.xlsx files in report-templates/)
+     ============================================================ -->
+<section class="card adm-pane is-hidden" id="adm-pane-tracker">
+  <header class="card-h">
+    <h2>Master tracker templates (Excel)</h2>
+    <div class="actions" style="gap:6px">
+      <input type="file" accept=".xlsx,.xlsm" id="adm-tracker-upload-input"
+             style="display:none">
+      <button class="btn-secondary btn-sm" id="adm-tracker-upload-btn"
+              title="Upload a brand-new tracker file (will not overwrite an existing row — use Replace on the row for that)">
+        + Upload new
+      </button>
+      <button class="btn-secondary btn-sm" id="adm-tracker-diag-btn"
+              title="Show the per-report-type → tracker-file resolution map">
+        🔍 Diagnose
+      </button>
+      <span class="muted small" id="adm-tracker-count"
+            style="align-self:center">Loading…</span>
+    </div>
+  </header>
+  <p class="muted small" style="padding:0 16px;margin:0 0 8px">
+    These are the VibeDocs Excel tracker / Risk Register templates that
+    back the consultant's <strong>Export tracker</strong> action on every
+    report. Each file backs one or more VAPT types — the "Matches codes"
+    column shows which. Replace a file to roll out a new column layout
+    for the team in one action; the previous copy is backed up to
+    <code>&lt;name&gt;.bak.&lt;timestamp&gt;</code> on the host.
+  </p>
+  <div style="padding:0 16px 16px;overflow-x:auto">
+    <table class="data" id="adm-tracker-table">
+      <thead>
+        <tr>
+          <th style="width:36px">#</th>
+          <th>Filename</th>
+          <th style="width:130px">Tracker type</th>
+          <th title="Which VAPT taskings (= report-template codes) currently route to this file. Edit the central mapping under the Tasking Assignments tab.">
+            Used by VAPT taskings
+          </th>
+          <th style="width:90px">Size</th>
+          <th style="width:160px">Modified</th>
+          <th style="width:240px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="adm-tracker-tbody">
+        <tr><td colspan="7" class="muted" style="text-align:center;padding:24px">
+          Loading trackers…
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================
+     TAB — Email Templates summary
+     ============================================================ -->
+<section class="card adm-pane is-hidden" id="adm-pane-email">
+  <header class="card-h">
+    <h2>Email templates</h2>
+    <a href="/admin/email-templates" class="btn-secondary">
+      Open full email-template editor →
+    </a>
+  </header>
+  <p class="muted small" style="padding:0 16px;margin:0 0 8px">
+    Outbound emails (password reset, report-share notification, review
+    decision, etc.) are rendered from templates stored in the database.
+    Edit them on the dedicated page linked above — body + subject use
+    the same Jinja2 placeholder syntax as report templates.
+  </p>
+  <div id="adm-email-tbody-host" style="padding:0 16px 16px">
+    <p class="muted" style="text-align:center;padding:24px">Loading…</p>
+  </div>
+</section>
+
+<!-- ============================================================
+     TAB — Placeholder Guide
+     ============================================================ -->
+<section class="card adm-pane is-hidden" id="adm-pane-guide">
+  <header class="card-h">
+    <h2>Placeholder guide — how to edit VibeDocs report templates</h2>
+  </header>
+  <div style="padding:0 18px 18px;line-height:1.55;font-size:13.5px">
+    {# CRITICAL: every literal Jinja example below MUST live inside a
+       `{% raw %}` block. The page itself is a Jinja template, so any
+       raw `{{ ... }}` or `{% ... %}` token would otherwise be
+       interpreted at PAGE-render time — and `{%p ... %}` (docxtpl's
+       paragraph-loop tag) isn't valid Jinja2 syntax, so it crashes the
+       page with a 500. Wrapping the guide content in `raw` turns
+       every brace pair into displayable text. #}
+    {% raw %}
+    <p>
+      Every report template (the Word <code>.docx</code> files under
+      <code>backend/word_templates/</code>) is rendered through the
+      <a href="https://docxtpl.readthedocs.io/" target="_blank" rel="noopener">docxtpl</a>
+      engine before delivery. To customise a template:
+    </p>
+
+    <div style="background:var(--accent-soft);border:1px solid var(--accent-line);
+                border-radius:6px;padding:10px 14px;margin:8px 0 12px;font-size:13px;line-height:1.5">
+      <strong style="color:var(--accent-dark)">💡 New: Auto-Transform</strong> —
+      Uploading a stock VibeDocs template (Heading 2 "Detailed Findings"
+      with one example finding section) via <strong>↑ Replace .docx</strong>
+      now <em>automatically</em> wraps the structured section with a
+      <code>{%p for f in findings %}</code> loop and fills the CVSS
+      table + SubHeading bodies with the correct <code>{{ f.* }}</code>
+      placeholders. You no longer need to add placeholders by hand
+      inside the example finding section. If you already uploaded a
+      raw template, click <strong>↻ Transform</strong> on its row to
+      apply the same conversion in place.
+    </div>
+    <ol>
+      <li>Open the relevant <code>Security Assessment XXX … (Template).docx</code>
+        in <strong>Microsoft Word</strong>. Editing in LibreOffice can
+        re-wrap split runs and break Jinja tags that span runs — Word
+        is safest.</li>
+      <li>Replace any literal text or table cell with the placeholder
+        below. Keep the <code>{{&nbsp;…&nbsp;}}</code> / <code>{%&nbsp;…&nbsp;%}</code>
+        syntax intact — break a curly-brace pair across runs and the
+        renderer raises a Jinja syntax error.</li>
+      <li>Save the file under its original name and drop it back into
+        the same <code>report-templates/</code> folder (or upload via the
+        "Replace .docx" action on the Report Templates tab).</li>
+      <li>Click <strong>↻ Regenerate from VibeDocs sources</strong>
+        above. The transformer rewrites the canonical
+        <code>&lt;code&gt;_template.docx</code> files used at render
+        time. No restart needed.</li>
+      <li>Generate a test report and validate the output. If
+        something renders as literal Jinja text, run
+        <a href="/api/templates/diagnose-defaults" target="_blank">/api/templates/diagnose-defaults</a>
+        to see which source each template resolved from.</li>
+    </ol>
+
+    <h3 style="margin-top:18px">Project &amp; report-level placeholders</h3>
+    <table class="data">
+      <thead><tr><th style="width:340px">Placeholder</th><th>Where it appears in the rendered report</th></tr></thead>
+      <tbody>
+        <tr><td colspan="2" style="background:var(--surface-2);font-size:12px;color:var(--text-2);padding:4px 10px"><strong>Project fields</strong></td></tr>
+        <tr><td><code>{{ project.client_name }}</code></td><td>Cover page client name; header / footer per template.</td></tr>
+        <tr><td><code>{{ project.name }}</code></td><td>Cover page project / engagement name.</td></tr>
+        <tr><td><code>{{ project.sector }}</code></td><td>Optional sector / vertical (e.g. "Government", "Financial Services").</td></tr>
+        <tr><td><code>{{ project.scope_description }}</code></td><td>Free-text scope summary set on the project page.</td></tr>
+        <tr><td><code>{{ project.testing_window }}</code></td><td>String e.g. "2026-04-01 to 2026-04-15".</td></tr>
+        <tr><td><code>{{ scope_text }}</code></td><td>Newline-separated list of all scope IPs / URLs / hostnames — the same data entered in the Scope textarea on Report Details. Useful for a simple scope block without a Jinja2 for-loop.</td></tr>
+        <tr><td colspan="2" style="background:var(--surface-2);font-size:12px;color:var(--text-2);padding:4px 10px"><strong>Report fields</strong></td></tr>
+        <tr><td><code>{{ report.name }}</code></td><td>The named deliverable (e.g. "Q1 Web App Pentest").</td></tr>
+        <tr><td><code>{{ report.version }}</code></td><td>Review / version string e.g. "0.1", "0.2", "1.0".</td></tr>
+        <tr><td><code>{{ report.type }}</code></td><td>Report type label (e.g. "Initial Report", "Retest Report", "Final Report"). Shortcut alias for <code>{{ details.report_type }}</code>.</td></tr>
+        <tr><td><code>{{ report.doc_version }}</code></td><td>Document version number from Report Details (e.g. "0.1", "1.0"). Shortcut alias for <code>{{ details.doc_version }}</code>.</td></tr>
+        <tr><td colspan="2" style="background:var(--surface-2);font-size:12px;color:var(--text-2);padding:4px 10px"><strong>Report details — filled on the Report Details form per-report</strong></td></tr>
+        <tr><td><code>{{ details.application_name }}</code></td><td>Application / asset name (e.g. "Acme Web Portal", "10.0.0.0/24").</td></tr>
+        <tr><td><code>{{ details.client_name }}</code></td><td>Client / company name override for this report (e.g. "Acme Corporation").</td></tr>
+        <tr><td><code>{{ details.report_type }}</code></td><td>Report type label — one of: Initial Report, Retest Report, Final Report, Report Update.</td></tr>
+        <tr><td><code>{{ details.report_date }}</code></td><td>ISO date the consultant set on the report-details form (YYYY-MM-DD).</td></tr>
+        <tr><td><code>{{ details.tester_names | join(', ') }}</code></td><td>Comma-separated list of consultants who tested.</td></tr>
+        <tr><td><code>{{ details.user_roles_tested | join(', ') }}</code></td><td>Comma-separated list of user roles tested (e.g. "admin, program manager").</td></tr>
+        <tr><td><code>{{ details.client_contacts | join(', ') }}</code></td><td>Comma-separated client contacts (as entered, one per line).</td></tr>
+        <tr><td><code>{{ details.testing_window }}</code></td><td>Free-text testing window override (e.g. "2026-04-01 to 2026-04-04").</td></tr>
+        <tr><td><code>{{ details.client_owner }}</code></td><td>Client POC / engagement owner name.</td></tr>
+        <tr><td><code>{{ details.executive_summary }}</code></td><td>Executive Summary section body.</td></tr>
+        <tr><td colspan="2" style="background:var(--surface-2);font-size:12px;color:var(--text-2);padding:4px 10px"><strong>Vulnerability scanning tools — entered in Report Details</strong></td></tr>
+        <tr><td><code>{{ scanning_tools }}</code></td><td>List of scanning tool dicts. Use in a table row loop — see example below.</td></tr>
+        <tr><td><code>{{ details.scanning_tools }}</code></td><td>Alias for <code>{{ scanning_tools }}</code> — same data, available via the <code>details</code> namespace for template consistency.</td></tr>
+        <tr><td colspan="2" style="background:var(--surface-2);font-size:12px;color:var(--text-2);padding:4px 10px"><strong>Template boilerplate fields</strong></td></tr>
+        <tr><td><code>{{ template.scope_of_work }}</code></td><td>Scope-of-Work boilerplate for this VAPT type.</td></tr>
+        <tr><td><code>{{ template.methodology }}</code></td><td>Methodology boilerplate for this VAPT type.</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:18px">Scanning tools table loop</h3>
+    <p>To render the Vulnerability Scanning Tools Used table, add a <code>{%tr for … %}</code> row loop inside the table in your Word template:</p>
+    <pre class="md-pre"><code>| Name | Version | Last Update Performed |
+| {%tr for t in scanning_tools %}
+| {{ t.tool_name }} | {{ t.version }} | {{ t.last_update }} |
+| {%tr endfor %}</code></pre>
+    <p style="margin-top:6px">Each row the consultant adds in Report Details becomes one table row. An empty list renders zero data rows (header row only).</p>
+
+    <h3 style="margin-top:18px">Severity summary placeholders</h3>
+    <table class="data">
+      <thead><tr><th style="width:300px">Placeholder</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>{{ total_findings }}</code></td><td>Total count of findings in this version.</td></tr>
+        <tr><td><code>{{ severity_counts.Critical }}</code></td><td>Count of Critical findings.</td></tr>
+        <tr><td><code>{{ severity_counts.High }}</code></td><td>Count of High findings.</td></tr>
+        <tr><td><code>{{ severity_counts.Medium }}</code></td><td>Count of Medium findings.</td></tr>
+        <tr><td><code>{{ severity_counts.Low }}</code></td><td>Count of Low findings.</td></tr>
+        <tr><td><code>{{ severity_counts.Informational }}</code></td><td>Count of Informational findings.</td></tr>
+        <tr><td><code>{{ severity_chart }}</code></td><td>Inline image — auto-generated severity bar chart. Place inside a paragraph; resizes to ~160mm wide.</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:18px">Per-finding loop</h3>
+    <p>Findings render inside a paragraph-level loop. Wrap the section
+      you want repeated with these two tags:</p>
+    <pre class="md-pre"><code>{%p for f in findings %}
+  Heading 2:  {{ f.title }}
+
+  Risk-rating table (one row per finding):
+    | {{ f.severity }} | {{ f.cvss_score }} | {{ f.cvss_vector }} | {{ f.owasp_category }} | {{ f.cwe }} | {{ f.severity }} |
+
+  Affected Asset:      {{ f.affected_asset }}
+  Observations:        {{ f.description }}
+  Steps to Reproduce:  {{ f.poc_steps }}
+  Implications:        {{ f.impact }}
+  Recommendations:     {{ f.remediation }}
+  References:          {{ f.references }}
+  Management Comments: {{ f.client_statement }}
+  Status:              {{ f.status }}
+  Follow-Up:           {{ f.retest_notes }}
+
+  Screenshots (paragraph-level loop — one image + caption per iteration):
+  {%p for img in f.screenshot_objs %}
+  {{ img }}
+  Figure {{ loop.index }}: {{ f.title }}
+  {%p endfor %}
+
+  Retest / follow-up screenshots:
+  {%p for img in f.retest_objs %}
+  {{ img }}
+  Figure {{ loop.index }}-retest: {{ f.title }}
+  {%p endfor %}
+{%p endfor %}</code></pre>
+
+    <h3 style="margin-top:18px">Per-finding fields available inside the loop</h3>
+    <table class="data">
+      <thead><tr><th style="width:240px">Placeholder</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>{{ f.title }}</code></td><td>Finding title (e.g. "Stored XSS in /comments").</td></tr>
+        <tr><td><code>{{ f.severity }}</code></td><td>Critical / High / Medium / Low / Informational.</td></tr>
+        <tr><td><code>{{ f.cvss_vector }}</code></td><td>Full CVSS vector string.</td></tr>
+        <tr><td><code>{{ f.cvss_score }}</code></td><td>Numeric score (e.g. 8.6).</td></tr>
+        <tr><td><code>{{ f.cwe }}</code></td><td>Full CWE entry — <code>CWE-XXX (Human readable name)</code>. Use in observation bodies where the full name adds context.</td></tr>
+        <tr><td><code>{{ f.cwe_id }}</code></td><td>CWE identifier only — e.g. <code>CWE-22</code>. Use in summary / risk-rating tables where space is limited.</td></tr>
+        <tr><td><code>{{ f.owasp_category }}</code></td><td>Top-10 or API-Top-10 category.</td></tr>
+        <tr><td><code>{{ f.affected_asset }}</code></td><td>URL / host / IP / file:line.</td></tr>
+        <tr><td><code>{{ f.description }}</code></td><td>Observation body (rich text — bold, lists, code blocks supported).</td></tr>
+        <tr><td><code>{{ f.poc_steps }}</code></td><td>Steps to reproduce (rich text).</td></tr>
+        <tr><td><code>{{ f.impact }}</code></td><td>Business / technical impact.</td></tr>
+        <tr><td><code>{{ f.remediation }}</code></td><td>Recommended fix.</td></tr>
+        <tr><td><code>{{ f.references }}</code></td><td>URLs / CVEs / advisory links.</td></tr>
+        <tr><td><code>{{ f.client_statement }}</code></td><td>Management comments / risk-acceptance text.</td></tr>
+        <tr><td><code>{{ f.status }}</code></td><td>Open / Closed / Risk Accepted / etc.</td></tr>
+        <tr><td><code>{{ f.retest_notes }}</code></td><td>Retest / follow-up observations.</td></tr>
+        <tr><td><code>{{ f.screenshot_objs }}</code></td><td>Iterable of InlineImage objects — use inside <code>{% for %}</code>.</td></tr>
+        <tr><td><code>{{ f.screenshot_captions }}</code></td><td>Parallel caption list. Pair via <code>{{ f.screenshot_captions[loop.index0] }}</code> inside the screenshot loop.</td></tr>
+        <tr><td><code>{{ f.retest_objs }}</code></td><td>Same as screenshot_objs but for the retest section.</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:18px">Network / scan-import placeholders (Infra templates only)</h3>
+    <p>Wrap the scan-results table with the row-level loop:</p>
+    <pre class="md-pre"><code>{%tr for r in nmap_rows %}
+  | {{ r.host }} | {{ r.port }} | {{ r.service }} | {{ r.version }} | {{ r.notes }} |
+{%tr endfor %}</code></pre>
+
+    <h3 style="margin-top:18px">Embedding screenshots inline in rich-text fields</h3>
+    <p>
+      Consultants can reference uploaded screenshots from inside the
+      <strong>Observations</strong>, <strong>Steps to Reproduce</strong>,
+      <strong>Implications</strong>, <strong>Recommendations</strong>,
+      <strong>References</strong>, <strong>Follow-up</strong>, and
+      <strong>Client Statement</strong> editors by typing
+      <code>[Screenshot N]</code> on a new line, where <em>N</em> is the
+      1-based index in the finding's screenshots upload list. The
+      renderer replaces the token with the matching image at generate
+      time:
+    </p>
+    <pre class="md-pre"><code>1. Open the login page.
+[Screenshot 1]
+2. Enter `' OR 1=1 --` in the username field.
+[Screenshot 2]
+3. Submit and observe the bypass.</code></pre>
+    <p class="muted small">
+      Out-of-range references (<code>[Screenshot 99]</code> when only
+      two are uploaded) keep their literal text in the deliverable so
+      the consultant sees the dangling reference. The dedicated
+      <em>Screenshots</em> SubHeading section of the finding still
+      renders every uploaded screenshot in order — inline references
+      are an add-on for cases where you want a specific image to land
+      next to the step that produced it.
+    </p>
+
+    <h3 style="margin-top:18px">Pitfalls &amp; gotchas</h3>
+    <ul>
+      <li><strong>Don't manually type the curly braces in a tight loop.</strong>
+        Word splits them across runs and the Jinja parser fails. Paste
+        the whole placeholder in one go, or use Find &amp; Replace.</li>
+      <li><strong>Tables loop with <code>{%tr ... %}</code></strong>
+        (row-level), <strong>paragraphs with <code>{%p ... %}</code></strong>
+        (paragraph-level). Using the wrong scope produces a duplicated
+        table outside the intended scope.</li>
+      <li><strong>Inline images via <code>{{ f.screenshot_objs }}</code></strong>
+        need to live inside a paragraph context — don't drop them
+        inside a table cell unless the cell already has a paragraph.</li>
+      <li><strong>Plain <code>{{ x }}</code> vs <code>{% raw %}{{ x }}{% endraw %}</code></strong>:
+        only use <code>{% raw %}</code> if you want the literal curly
+        braces to render. The system strips stray raw blocks at render
+        time, but it's cleaner not to add them.</li>
+      <li><strong>Stale runs.</strong> After heavy editing in Word,
+        save → close → reopen the file. Word often leaves zombie runs
+        behind that break Jinja parsing only on save.</li>
+    </ul>
+    {% endraw %}
+  </div>
+</section>
+
+<style>
+/* Inner admin-tab strip + panes — scoped to .adm-* so they don't
+ * collide with any outer tabs the parent page might add. */
+.adm-tabs{display:flex;gap:4px;margin:14px 0 10px;border-bottom:1px solid var(--border)}
+.adm-tab{background:transparent;border:0;cursor:pointer;padding:9px 14px;
+  font-size:13px;font-weight:500;color:var(--text-2);
+  border-bottom:2px solid transparent;border-radius:6px 6px 0 0;
+  transition:color .15s,border-color .15s,background .15s}
+.adm-tab:hover{color:var(--text);background:var(--surface-2)}
+.adm-tab.active{color:var(--accent-dark);border-bottom-color:var(--accent-dark);font-weight:600}
+.adm-pane.is-hidden{display:none}
+
+.rtpl-pill{display:inline-block;padding:2px 8px;border-radius:999px;
+  font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.rtpl-pill.on{background:var(--ok-bg);color:var(--ok-fg);border:1px solid var(--ok-line)}
+.rtpl-pill.off{background:var(--err-bg);color:var(--err-fg);border:1px solid #fecaca}
+.rtpl-pill.vibedocs{background:var(--accent-soft);color:var(--accent-dark);border:1px solid var(--accent-line)}
+.rtpl-pill.simple{background:var(--surface-3);color:var(--text-2);border:1px solid var(--border)}
+
+.tgl{position:relative;display:inline-block;width:42px;height:22px;cursor:pointer}
+.tgl input{opacity:0;width:0;height:0}
+.tgl .slider{position:absolute;inset:0;background:var(--surface-3);border:1px solid var(--border);
+  border-radius:999px;transition:.2s}
+.tgl .slider::before{content:"";position:absolute;height:16px;width:16px;
+  left:2px;top:2px;background:var(--text-2);border-radius:50%;transition:.2s}
+.tgl input:checked + .slider{background:var(--accent-soft);border-color:var(--accent-dark)}
+.tgl input:checked + .slider::before{transform:translateX(20px);background:var(--accent-dark)}
+.tgl input:disabled + .slider{opacity:.5;cursor:wait}
+
+.md-pre{background:#0f172a;color:#e2e8f0;padding:10px 12px;border-radius:6px;
+  overflow-x:auto;font-size:12.5px;line-height:1.45;margin:8px 0;border:1px solid #1e293b}
+.md-pre code{font-family:ui-monospace,Consolas,monospace;background:none;border:0;color:inherit;padding:0}
+
+/* Tracker table — uniform pill sizing.  Without `white-space:nowrap`,
+ * a multi-word label like "Cloud VAPT" wraps inside a narrow column
+ * and the pill grows TALL (the visual "fat pill" the user flagged).
+ * Pinning a minimum width keeps every pill the same size regardless
+ * of label length. */
+.trk-label-pill{
+  display:inline-block;white-space:nowrap;
+  padding:3px 12px;border-radius:999px;
+  background:var(--accent-soft);color:var(--accent-dark);
+  border:1px solid var(--accent-line);
+  font-size:11px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;min-width:96px;text-align:center
+}
+
+/* Code chip for the "Used by VAPT taskings" column. Single line,
+ * inline-block, no wrapping so a code with two words stays compact. */
+.trk-code-chip{
+  display:inline-block;white-space:nowrap;
+  background:var(--accent-soft);color:var(--accent-dark);
+  padding:2px 8px;border-radius:4px;font-size:11.5px;
+  font-family:ui-monospace,Consolas,monospace;line-height:1.4
+}
+</style>
+
+<script nonce="{{ request.state.csp_nonce }}">
+// ============================================================
+// Inner-tab switching for the admin block — scoped to .adm-* so it
+// doesn't fight any outer tab system on the parent page.
+// ============================================================
+(function admInitInnerTabs(){
+  const ADM_TABS = document.querySelectorAll(".adm-tab");
+  const ADM_PANES = {
+    assign:  document.getElementById("adm-pane-assign"),
+    report:  document.getElementById("adm-pane-report"),
+    tracker: document.getElementById("adm-pane-tracker"),
+    email:   document.getElementById("adm-pane-email"),
+    guide:   document.getElementById("adm-pane-guide"),
+  };
+  for (const t of ADM_TABS){
+    t.addEventListener("click", () => {
+      ADM_TABS.forEach(x => x.classList.toggle("active", x === t));
+      ADM_TABS.forEach(x => x.setAttribute("aria-selected", x === t ? "true" : "false"));
+      for (const [k, el] of Object.entries(ADM_PANES)){
+        if (el) el.classList.toggle("is-hidden", k !== t.dataset.admTab);
+      }
+      if (t.dataset.admTab === "email" && !window._admEmailLoaded){
+        admLoadEmailTemplates();
+      }
+      // Trackers are listed on demand the first time the tab is opened.
+      // After that, manual actions (Replace / Delete) trigger reloads
+      // explicitly so we don't double-fetch.
+      if (t.dataset.admTab === "tracker" && !window._admTrackerLoaded){
+        admLoadTrackerTemplates();
+        window._admTrackerLoaded = true;
+      }
+      // Tasking Assignments — refresh every visit so a Replace/Delete
+      // on the Tracker Templates tab is reflected in the dropdowns.
+      if (t.dataset.admTab === "assign"){
+        admLoadAssignments();
+      }
+    });
+  }
+})();
+
+// ============================================================
+// Report templates table
+// ============================================================
+async function admLoadReportTemplates(){
+  const tbody = document.getElementById("adm-rtpl-tbody");
+  tbody.innerHTML = `<tr><td colspan="8" class="muted" style="text-align:center;padding:24px">Loading…</td></tr>`;
+  try {
+    const [r1, r2] = await Promise.all([
+      fetch("/api/templates?only_active=false", {credentials:"include"}),
+      fetch("/api/templates/diagnose-defaults", {credentials:"include"}),
+    ]);
+    if (!r1.ok) throw new Error("Failed to load templates");
+    const tpls = await r1.json();
+    let diag = null;
+    if (r2.ok){ diag = await r2.json(); }
+    const byFile = {};
+    if (diag && diag.rows){
+      for (const row of diag.rows) byFile[row.output_filename] = row;
+    }
+    document.getElementById("adm-rtpl-count").textContent =
+      `${tpls.length} template${tpls.length === 1 ? '' : 's'} in the system`;
+    if (!tpls.length){
+      tbody.innerHTML = `<tr><td colspan="8" class="muted" style="text-align:center;padding:24px">No templates seeded yet.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = "";
+    let idx = 1;
+    for (const t of tpls){
+      const diagRow = byFile[t.docx_filename] || null;
+      const source = diagRow ? diagRow.vibedocs_source : null;
+      const size = diagRow ? diagRow.output_size : null;
+      const tr = document.createElement("tr");
+      tr.dataset.tplId = t.id;
+      tr.innerHTML = `
+        <td>${idx++}</td>
+        <td><strong>${admEscapeHtml(t.name)}</strong></td>
+        <td><code class="small">${admEscapeHtml(t.code)}</code></td>
+        <td>
+          ${t.original_filename
+            ? `<div><strong style="font-size:12.5px">${admEscapeHtml(t.original_filename)}</strong></div>
+               <code class="small muted" title="On-disk filename">${admEscapeHtml(t.docx_filename || '—')}</code>`
+            : `<code class="small">${admEscapeHtml(t.docx_filename || '—')}</code>`}
+        </td>
+        {# Source pill logic — three states. Earlier the admin table
+           only knew "VibeDocs (matched a bundled source)" vs "Simple
+           fallback (no match)". That made an admin-uploaded .docx
+           that lives at a hashed filename (e.g.
+           web_vapt__<uuid>.docx) wrongly read as a Simple fallback —
+           even when the uploaded file was a perfectly good VibeDocs
+           template — because the diagnose endpoint maps by canonical
+           filename and a hashed name isn't in SPECS.
+           Detection (in order):
+             1. `t.original_filename` is set → admin replaced via the
+                upload UI in the era after we started recording it.
+             2. `t.docx_filename` matches the `<code>__<hex>.docx`
+                hash pattern → legacy admin upload from before the
+                column existed. We still treat it as admin-uploaded.
+             3. Diagnose endpoint matched a VibeDocs source → VibeDocs.
+             4. Else → Simple fallback. #}
+        <td>${(function(){
+          const isHashedAdmin = (t.docx_filename || "").match(
+            new RegExp("^" + (t.code || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+                       + "__[A-Fa-f0-9]{4,}\\.docx$")
+          );
+          if (t.original_filename || isHashedAdmin){
+            const displayName = t.original_filename || t.docx_filename;
+            return `<span class="rtpl-pill vibedocs"
+                          title="This template's .docx was replaced via the
+admin upload UI. The diagnose endpoint maps by canonical filename so it
+can't match this hashed copy back to a bundled VibeDocs source, but the
+file IS the consultant's custom upload — not a simple-fallback
+plain-paragraph build.">Admin upload</span>
+              <div class="muted small" style="margin-top:2px;font-family:ui-monospace,Consolas,monospace;font-size:10.5px">${admEscapeHtml(displayName)}</div>`;
+          }
+          if (source){
+            return `<span class="rtpl-pill vibedocs" title="${admEscapeHtml(source)}">VibeDocs</span>
+              <div class="muted small" style="margin-top:2px;font-family:ui-monospace,Consolas,monospace;font-size:10.5px">${admEscapeHtml(source)}</div>`;
+          }
+          return `<span class="rtpl-pill simple"
+                        title="No bundled VibeDocs source matched this template's filename and no admin upload is on record; the canonical .docx was built by the plain-paragraph fallback.">Simple fallback</span>`;
+        })()}</td>
+        {# Size: prefer the templates-list endpoint's `docx_filesize`
+           (which it always populates by stat()'ing the on-disk file)
+           over the diagnose endpoint's `output_size` (which is only
+           defined for canonical-filename rows in SPECS). This way
+           admin-uploaded files show their real size instead of "—".
+           Falls through to the diagnose value to keep behaviour
+           backwards-compatible with older clients. #}
+        <td>${(t.docx_filesize != null)
+            ? `<span class="small">${admFormatBytes(t.docx_filesize)}</span>`
+            : (size != null
+                ? `<span class="small">${admFormatBytes(size)}</span>`
+                : `<span class="muted small">—</span>`)}</td>
+        <td>
+          <label class="tgl" title="Disable this template to hide it from the consultant picker without affecting in-flight reports">
+            <input type="checkbox" class="active-toggle" ${t.is_active ? 'checked' : ''}>
+            <span class="slider"></span>
+          </label>
+          <div class="rtpl-pill ${t.is_active ? 'on' : 'off'}" style="margin-top:4px">
+            ${t.is_active ? 'Active' : 'Disabled'}
+          </div>
+        </td>
+        <td style="white-space:nowrap">
+          <input type="file" accept=".docx" style="display:none" class="replace-input">
+          <a class="btn-secondary btn-sm download-btn"
+             href="/api/templates/${t.id}/download"
+             title="Download the .docx currently used by this template (placeholders intact). Edit in Word, then upload via Replace with auto-transform=No to keep your edits byte-for-byte.">
+            ↓ Download
+          </a>
+          <button class="btn-secondary btn-sm replace-btn"
+                  title="Upload a new .docx to replace the system-wide template for this VAPT type">
+            ↑ Replace
+          </button>
+          <button class="btn-secondary btn-sm transform-btn"
+                  title="Re-run the VibeDocs → docxtpl-ready transformer in place. Use this if findings are rendering as flat 'Finding N:' plain text instead of structured sections.">
+            ↻ Transform
+          </button>
+        </td>
+      `;
+      // Active-toggle handler. Visible "Saving…" → "Saved ✓" feedback
+      // so the admin can SEE the PATCH succeeded — otherwise a silent
+      // success looks identical to a silent failure and the user
+      // assumes "the toggle keeps going back to disabled" when in
+      // reality the click did save and the pill flipped (which is
+      // easy to miss with a fast network).
+      const toggle = tr.querySelector(".active-toggle");
+      const pill = tr.querySelector(".rtpl-pill.on, .rtpl-pill.off");
+      toggle.addEventListener("change", async () => {
+        toggle.disabled = true;
+        const prevPillCls = pill.className;
+        const prevPillText = pill.textContent;
+        pill.className = "rtpl-pill simple";
+        pill.textContent = "Saving…";
+        try {
+          const r = await fetch(`/api/templates/${t.id}/active?active=${toggle.checked}`, {
+            method: "PATCH", credentials: "include",
+          });
+          if (!r.ok) throw new Error(await r.text() || r.statusText);
+          // Re-read the server's response so the UI reflects the row
+          // as the DB actually persisted it — protects against any
+          // future server-side coercion of `active` we don't expect.
+          const updated = await r.json();
+          toggle.checked = !!updated.is_active;
+          pill.className = `rtpl-pill ${updated.is_active ? 'on' : 'off'}`;
+          pill.textContent = updated.is_active ? 'Saved ✓ Active' : 'Saved ✓ Disabled';
+          // Settle to the plain label after the user has had a beat to
+          // read the confirmation. 1.4 s is long enough to register,
+          // short enough that the pill doesn't look "stuck".
+          setTimeout(() => {
+            if (pill.textContent.startsWith("Saved")) {
+              pill.textContent = updated.is_active ? 'Active' : 'Disabled';
+            }
+          }, 1400);
+        } catch (err) {
+          alert("Failed to update: " + err.message);
+          toggle.checked = !toggle.checked;
+          pill.className = prevPillCls;
+          pill.textContent = prevPillText;
+        } finally {
+          toggle.disabled = false;
+        }
+      });
+      // Replace .docx handler — prompts for a custom filename so the
+      // admin can give the file a meaningful name (e.g. "v2026-05"
+      // instead of a random hash). Auto-transform defaults to No for
+      // templates that already carry docxtpl placeholders.
+      const fileInput = tr.querySelector(".replace-input");
+      const replaceBtn = tr.querySelector(".replace-btn");
+      replaceBtn.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", async () => {
+        if (!fileInput.files || !fileInput.files[0]) return;
+        // Step 1 — confirm the system-wide replacement.
+        if (!confirm(
+          `Replace the system-wide .docx for "${t.name}"?\n\n` +
+          `Every consultant will use the new template for any new ` +
+          `report. Existing reports continue using their current binding.\n\n` +
+          `The previous file will be deleted from disk.`
+        )) { fileInput.value = ''; return; }
+        // Step 2 — custom filename (optional). Leave blank to use the
+        // upload filename. The final on-disk name will be prefixed with
+        // the template code (e.g. web_vapt__<your_name>.docx).
+        const customFilename = prompt(
+          `File name for "${t.name}" (optional):\n\n` +
+          `Leave blank to use the upload filename as-is.\n` +
+          `Example: "v2026-05-24" → saved as ${t.code}__v2026-05-24.docx\n\n` +
+          `Tip: use a date or version tag so you can track revisions.`,
+          ""
+        );
+        if (customFilename === null) { fileInput.value = ''; return; } // cancelled
+        {# Wrapped in raw so the literal docxtpl tokens in the prompt
+           text don't cause a Jinja parse error at page-render time. #}
+        {% raw %}
+        // Step 3 — auto-transform choice. Default is NO (Cancel) because
+        // most uploads already have {{ f.* }} placeholders hand-placed by
+        // the admin. Only choose Yes for a raw VibeDocs stock template.
+        const runAutoTransform = confirm(
+          "Run the VibeDocs auto-transformer on this upload?\n\n" +
+          "OK  = Yes. Wraps the example finding section in a loop and\n" +
+          "      fills the CVSS table with {{ f.* }} placeholders.\n" +
+          "      Choose this ONLY for raw stock VibeDocs templates.\n\n" +
+          "Cancel = No (RECOMMENDED). Keeps the .docx exactly as\n" +
+          "      uploaded — use this if your template already has\n" +
+          "      {{ f.* }} / {%p for f in findings %} placeholders."
+        );
+        {% endraw %}
+        const fd = new FormData();
+        fd.append("docx_file", fileInput.files[0]);
+        if (customFilename && customFilename.trim()) {
+          fd.append("custom_filename", customFilename.trim());
+        }
+        replaceBtn.disabled = true;
+        replaceBtn.textContent = "Uploading…";
+        try {
+          const url = `/api/templates/${t.id}/replace-docx`
+            + `?auto_transform=${runAutoTransform ? 'true' : 'false'}`;
+          const r = await fetch(url, {
+            method: "POST", credentials: "include", body: fd,
+          });
+          if (!r.ok) throw new Error(await r.text() || r.statusText);
+          const data = await r.json();
+          alert(`Template replaced.\nOn-disk file: ${data.docx_filename}\nReloading…`);
+          admLoadReportTemplates();
+        } catch (err) {
+          alert("Upload failed: " + err.message);
+        } finally {
+          replaceBtn.disabled = false;
+          replaceBtn.textContent = "↑ Replace";
+          fileInput.value = '';
+        }
+      });
+      // Re-transform handler — runs the VibeDocs→docxtpl-ready walker
+      // on the file already attached to this template, in place.
+      const transformBtn = tr.querySelector(".transform-btn");
+      transformBtn.addEventListener("click", async () => {
+        {# Wrap the confirm() argument in {% raw %} because the prompt
+           text contains docxtpl placeholder tokens — `{%p ... %}` and
+           `{{ f.* }}` — that we want the *user* to see literally. The
+           page is itself a Jinja template, and `{%p%}` is not a real
+           Jinja tag, so without raw the page errors with
+           `TemplateSyntaxError: Encountered unknown tag 'p'.` and the
+           whole /templates route 500s. The JS-side `${t.name}`
+           interpolation is unaffected — `${ ... }` is not a Jinja
+           token, so the browser still expands it at runtime. #}
+        {% raw %}
+        if (!confirm(
+          `Re-transform the .docx for "${t.name}" in place?\n\n` +
+          `This wraps the "Detailed Findings → Heading 2 → ` +
+          `SubHeading" example section with a {%p for f in findings %} ` +
+          `loop and replaces hardcoded example values with ` +
+          `{{ f.* }} placeholders. Use this if findings render as flat ` +
+          `"Finding N: TITLE" plain text instead of structured ` +
+          `sections.\n\nThe previous file is overwritten — if you need ` +
+          `to roll back, re-upload the original via Replace .docx.`
+        )) return;
+        {% endraw %}
+        transformBtn.disabled = true;
+        transformBtn.textContent = "Transforming…";
+        try {
+          const r = await fetch(`/api/templates/${t.id}/retransform`, {
+            method: "POST", credentials: "include",
+          });
+          if (!r.ok) throw new Error(await r.text() || r.statusText);
+          const data = await r.json();
+          if (data.ok){
+            alert(
+              `Transform succeeded for "${t.name}".\n\n` +
+              `File: ${data.file}\n` +
+              `Size: ${admFormatBytes(data.pre_size)} → ${admFormatBytes(data.post_size)}\n\n` +
+              `Generate a test report to verify the per-finding layout.`
+            );
+          } else {
+            alert(
+              `Transform did NOT modify "${t.name}".\n\n` +
+              `Reason: ${data.reason || '(no detail)'}\n\n` +
+              `The template likely doesn't follow the expected VibeDocs ` +
+              `"Detailed Findings → Heading 2 → SubHeading" structure, ` +
+              `or has already been transformed.`
+            );
+          }
+          admLoadReportTemplates();
+        } catch (err) {
+          alert("Transform failed: " + err.message);
+        } finally {
+          transformBtn.disabled = false;
+          transformBtn.textContent = "↻ Transform";
+        }
+      });
+      tbody.appendChild(tr);
+    }
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="8" style="color:var(--err-fg);text-align:center;padding:24px">
+      Failed to load: ${admEscapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+// ============================================================
+// Tasking Assignments table — central map of VAPT tasking type to
+// (Word template, Excel tracker). The Word side is read-only here
+// (admin manages it from the Report Templates tab); the Excel side
+// is a dropdown of available .xlsx files that PATCHes
+// `ReportTemplate.tracker_filename` on change.
+// ============================================================
+async function admLoadAssignments(){
+  const tbody = document.getElementById("adm-assign-tbody");
+  const countEl = document.getElementById("adm-assign-count");
+  tbody.innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">Loading…</td></tr>`;
+  try {
+    const r = await fetch("/api/admin/tracker-templates/assignments", {credentials:"include"});
+    if (!r.ok) throw new Error(await r.text() || r.statusText);
+    const data = await r.json();
+    const rows = data.rows || [];
+    const trackers = data.available_trackers || [];
+    // The Word-template dropdown source. Each entry is
+    // `{filename, size}`. We don't filter by code prefix — admins
+    // can deliberately rebind a tasking to ANY available .docx
+    // (including admin-uploaded `<code>__<uuid>.docx` files), so
+    // the dropdown lists every choice.
+    const wordTemplates = data.available_word_templates || [];
+    countEl.textContent = `${rows.length} VAPT tasking types`;
+    if (!rows.length){
+      tbody.innerHTML = `<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">No tasking types seeded yet.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = "";
+    rows.forEach((row, idx) => {
+      const tr = document.createElement("tr");
+      // ---- Tracker dropdown options ----
+      // The "no override" choice (empty value) is rendered with the
+      // legacy-resolver fallback noted in the label so the admin
+      // knows what file IS picked when the override is cleared.
+      const fallback = row.tracker_resolved && row.tracker_resolved !== row.tracker_filename
+        ? row.tracker_resolved
+        : null;
+      const fallbackLabel = fallback
+        ? `Auto (legacy "${row.tracker_legacy_label}" → ${fallback})`
+        : `Auto (legacy "${row.tracker_legacy_label}" — no file matches)`;
+      const trkOpts = [
+        `<option value="" ${row.tracker_filename ? "" : "selected"}>${admEscapeHtml(fallbackLabel)}</option>`,
+        ...trackers.map(t =>
+          `<option value="${admEscapeHtml(t)}" ${row.tracker_filename === t ? "selected" : ""}>${admEscapeHtml(t)}</option>`
+        ),
+      ].join("");
+
+      // ---- Word-template dropdown options ----
+      // No "auto" choice — every tasking must have SOME .docx
+      // bound. If the currently-bound file isn't in the available
+      // list (someone deleted it from disk) we still show it as
+      // selected so the admin sees the broken state and can pick
+      // a replacement.
+      const docxOptions = [...wordTemplates];
+      const haveCurrent = docxOptions.some(w => w.filename === row.docx_filename);
+      if (row.docx_filename && !haveCurrent){
+        docxOptions.unshift({filename: row.docx_filename, size: null,
+                              missing: true});
+      }
+      const docxOpts = docxOptions.map(w => {
+        const sel = (w.filename === row.docx_filename) ? "selected" : "";
+        const tag = w.missing ? " [MISSING]" : "";
+        return `<option value="${admEscapeHtml(w.filename)}" ${sel}>${admEscapeHtml(w.filename)}${tag}</option>`;
+      }).join("");
+
+      // ---- Status pill (Tracker side — Word side has its own indicator) ----
+      let status;
+      if (row.tracker_override_broken){
+        status = `<span class="rtpl-pill off" title="The override file is missing on disk. The export is falling back to the legacy resolver until you re-bind.">⚠ Broken</span>`;
+      } else if (row.tracker_filename){
+        status = `<span class="rtpl-pill on" title="Explicit override set by admin">Bound</span>`;
+      } else if (row.tracker_resolved){
+        status = `<span class="rtpl-pill vibedocs" title="No override — resolved by the legacy filename pattern">Auto</span>`;
+      } else {
+        status = `<span class="rtpl-pill simple" title="No file resolves for this tasking — export will fall back to the synthesised flat layout">— Unset</span>`;
+      }
+
+      // Small "file missing on disk" warning surfaced under the
+      // Word dropdown when the bound file isn't found.
+      const docxWarn = row.docx_filename && !row.docx_exists
+        ? `<div class="muted small" style="color:var(--err-fg);margin-top:3px">⚠ File missing on disk — pick a replacement</div>`
+        : "";
+
+      tr.innerHTML = `
+        <td>${idx + 1}</td>
+        <td><strong>${admEscapeHtml(row.name)}</strong>${!row.is_active ? ' <span class="rtpl-pill off" style="margin-left:6px">Disabled</span>' : ''}</td>
+        <td><code class="small">${admEscapeHtml(row.code)}</code></td>
+        <td>
+          <select class="adm-assign-docx" data-tid="${row.id}"
+                  style="width:100%;min-width:260px;padding:6px 8px;font-size:12.5px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:6px">
+            ${docxOpts}
+          </select>
+          ${docxWarn}
+        </td>
+        <td>
+          <select class="adm-assign-trk" data-tid="${row.id}"
+                  style="width:100%;min-width:260px;padding:6px 8px;font-size:12.5px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:6px">
+            ${trkOpts}
+          </select>
+        </td>
+        <td>${status}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    // Wire change handlers. Each dropdown PATCHes the SAME endpoint
+    // with the appropriate field — the server merges the partial
+    // update.
+    const wireSel = (cls, fieldName) => {
+      tbody.querySelectorAll(`.${cls}`).forEach(sel => {
+        sel.dataset.prev = sel.value;
+        sel.addEventListener("change", async () => {
+          const tid = sel.dataset.tid;
+          const value = sel.value || null;
+          const prev = sel.dataset.prev || "";
+          sel.disabled = true;
+          try {
+            const body = {};
+            body[fieldName] = value;
+            const r = await fetch(`/api/admin/tracker-templates/assignments/${tid}`, {
+              method:"PATCH", credentials:"include",
+              headers:{"Content-Type":"application/json"},
+              body: JSON.stringify(body),
+            });
+            if (!r.ok) throw new Error(await r.text() || r.statusText);
+            admLoadAssignments();
+          } catch (err) {
+            alert("Save failed: " + err.message);
+            sel.value = prev;
+          } finally {
+            sel.disabled = false;
+          }
+        });
+      });
+    };
+    wireSel("adm-assign-trk",  "tracker_filename");
+    wireSel("adm-assign-docx", "docx_filename");
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" style="color:var(--err-fg);text-align:center;padding:24px">Failed: ${admEscapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+// First-time load of the default tab.
+admLoadAssignments();
+
+// ============================================================
+// Tracker templates table — mirrors the report-templates flow but
+// keys everything off the on-disk filename instead of a DB int id.
+// The .xlsx files in TRACKER_TEMPLATES_DIR aren't DB-modelled, so
+// list/download/replace/delete all use the filename as the lookup.
+// ============================================================
+async function admLoadTrackerTemplates(){
+  const tbody = document.getElementById("adm-tracker-tbody");
+  const countEl = document.getElementById("adm-tracker-count");
+  tbody.innerHTML = `<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">Loading…</td></tr>`;
+  try {
+    const r = await fetch("/api/admin/tracker-templates", {credentials:"include"});
+    if (!r.ok) throw new Error("Failed to load: " + (await r.text() || r.statusText));
+    const data = await r.json();
+    if (!data.folder_exists){
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--warn-fg);text-align:center;padding:24px">
+        Tracker template folder does not exist on the server.<br>
+        Expected at: <code>${admEscapeHtml(data.folder)}</code><br>
+        Every tracker export is falling back to the synthesised layout.
+      </td></tr>`;
+      countEl.textContent = "Folder missing";
+      return;
+    }
+    const files = data.files || [];
+    countEl.textContent = `${files.length} tracker file${files.length === 1 ? '' : 's'}`;
+    if (!files.length){
+      tbody.innerHTML = `<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">No tracker files in the folder.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = "";
+    files.forEach((f, idx) => {
+      const tr = document.createElement("tr");
+      const modified = f.modified_at
+        ? new Date(f.modified_at).toLocaleString()
+        : "—";
+      const codesChips = (f.matches_codes || []).length
+        ? f.matches_codes.map(c =>
+            `<code class="trk-code-chip">${admEscapeHtml(c)}</code>`).join(' ')
+        : `<span class="muted small" style="font-style:italic" title="No VAPT tasking currently routes to this file. Assign one under the Tasking Assignments tab, or delete the file if it is unused.">No taskings assigned</span>`;
+      tr.innerHTML = `
+        <td>${idx + 1}</td>
+        <td><strong style="font-size:12.5px">${admEscapeHtml(f.filename)}</strong></td>
+        <td>${f.tracker_label
+              ? `<span class="trk-label-pill">${admEscapeHtml(f.tracker_label)}</span>`
+              : `<span class="muted small">—</span>`}</td>
+        <td style="line-height:1.7">${codesChips}</td>
+        <td><span class="small">${admFormatBytes(f.size)}</span></td>
+        <td class="muted small">${admEscapeHtml(modified)}</td>
+        <td style="white-space:nowrap">
+          <input type="file" accept=".xlsx,.xlsm" style="display:none" class="trk-replace-input">
+          <a class="btn-secondary btn-sm"
+             href="/api/admin/tracker-templates/${encodeURIComponent(f.filename)}/download"
+             title="Download this tracker (placeholders intact). Edit in Excel, then upload via Replace to push it back.">
+            ↓ Download
+          </a>
+          <button class="btn-secondary btn-sm trk-replace-btn"
+                  title="Replace this tracker with a new .xlsx. The old file is backed up to <name>.bak.<timestamp>.">
+            ↑ Replace
+          </button>
+          <button class="btn-danger btn-sm trk-delete-btn"
+                  title="Delete this tracker file (backed up first). Use only when retiring a template type.">
+            🗑 Delete
+          </button>
+        </td>`;
+      // Replace handler
+      const fileInput = tr.querySelector(".trk-replace-input");
+      const replaceBtn = tr.querySelector(".trk-replace-btn");
+      replaceBtn.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", async () => {
+        if (!fileInput.files || !fileInput.files[0]) return;
+        if (!confirm(
+          `Replace tracker "${f.filename}" with the uploaded file?\n\n` +
+          `Every consultant's next export of a matching report type will ` +
+          `use the new layout. The old file is backed up to ` +
+          `${f.filename}.bak.<timestamp> in the same folder.\n\n` +
+          `Existing exported trackers are NOT affected.`
+        )) { fileInput.value = ''; return; }
+        const fd = new FormData();
+        fd.append("xlsx_file", fileInput.files[0]);
+        replaceBtn.disabled = true;
+        replaceBtn.textContent = "Uploading…";
+        try {
+          const r = await fetch(
+            `/api/admin/tracker-templates/${encodeURIComponent(f.filename)}/replace`,
+            {method:"POST", credentials:"include", body:fd});
+          if (!r.ok) throw new Error(await r.text() || r.statusText);
+          alert(`Replaced. Backup at: ${(await r.clone().json()).backup || '(none)'}`);
+          admLoadTrackerTemplates();
+        } catch (err) {
+          alert("Upload failed: " + err.message);
+        } finally {
+          replaceBtn.disabled = false;
+          replaceBtn.textContent = "↑ Replace";
+          fileInput.value = '';
+        }
+      });
+      // Delete handler
+      const deleteBtn = tr.querySelector(".trk-delete-btn");
+      deleteBtn.addEventListener("click", async () => {
+        if (!confirm(
+          `Delete tracker file "${f.filename}"?\n\n` +
+          `Backed up to ${f.filename}.bak.<timestamp> in the same folder. ` +
+          `Report types that resolved to this file will fall back to the ` +
+          `synthesised layout until you upload a replacement.`
+        )) return;
+        deleteBtn.disabled = true;
+        try {
+          const r = await fetch(
+            `/api/admin/tracker-templates/${encodeURIComponent(f.filename)}`,
+            {method:"DELETE", credentials:"include"});
+          if (!r.ok) throw new Error(await r.text() || r.statusText);
+          admLoadTrackerTemplates();
+        } catch (err) {
+          alert("Delete failed: " + err.message);
+          deleteBtn.disabled = false;
+        }
+      });
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="7" style="color:var(--err-fg);text-align:center;padding:24px">Failed to load: ${admEscapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+// Upload-new handler — for adding brand-new tracker files without
+// overwriting any existing one. Refuses if a file with the same name
+// already exists (server-side 409) — use Replace on the row instead.
+document.getElementById("adm-tracker-upload-btn").addEventListener("click", () => {
+  document.getElementById("adm-tracker-upload-input").click();
+});
+document.getElementById("adm-tracker-upload-input").addEventListener("change", async (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  if (!confirm(
+    `Upload "${f.name}" as a NEW tracker file?\n\n` +
+    `Refuses to overwrite an existing file — for that, use the Replace ` +
+    `button on the corresponding row (the previous file is backed up first).`
+  )) { e.target.value = ''; return; }
+  const fd = new FormData();
+  fd.append("xlsx_file", f);
+  try {
+    const r = await fetch("/api/admin/tracker-templates/upload", {
+      method:"POST", credentials:"include", body:fd,
+    });
+    if (!r.ok) throw new Error(await r.text() || r.statusText);
+    admLoadTrackerTemplates();
+  } catch (err) {
+    alert("Upload failed: " + err.message);
+  } finally {
+    e.target.value = '';
+  }
+});
+
+document.getElementById("adm-tracker-diag-btn").addEventListener("click", async () => {
+  try {
+    const r = await fetch("/api/admin/tracker-templates/diagnose", {credentials:"include"});
+    if (!r.ok) throw new Error(await r.text() || r.statusText);
+    const data = await r.json();
+    let msg = `Folder: ${data.folder}\nExists: ${data.folder_exists}\n\n`;
+    msg += `Files (${data.files_found.length}):\n`;
+    for (const fn of data.files_found) msg += `  • ${fn}\n`;
+    msg += `\nPer-code resolution:\n`;
+    for (const [code, res] of Object.entries(data.per_code_resolution || {})){
+      msg += `  ${code.padEnd(20)} → ${res.matched_file || '(SYNTHESISED)'}\n`;
+    }
+    alert(msg);
+  } catch (err) {
+    alert("Diagnose failed: " + err.message);
+  }
+});
+
+
+async function admLoadEmailTemplates(){
+  if (window._admEmailLoaded) return;
+  window._admEmailLoaded = true;
+  const host = document.getElementById("adm-email-tbody-host");
+  try {
+    const r = await fetch("/api/admin/email-templates", {credentials:"include"});
+    if (!r.ok) throw new Error("Failed to load: " + r.statusText);
+    const tpls = await r.json();
+    if (!tpls || !tpls.length){
+      host.innerHTML = `<p class="muted">No email templates seeded yet.</p>`;
+      return;
+    }
+    host.innerHTML = `
+      <table class="data">
+        <thead><tr><th>Key</th><th>Subject</th><th>Updated</th><th></th></tr></thead>
+        <tbody>${tpls.map(t => `
+          <tr>
+            <td><code class="small">${admEscapeHtml(t.key)}</code></td>
+            <td>${admEscapeHtml(t.subject || '—')}</td>
+            <td class="muted small">${admEscapeHtml((t.updated_at || '').slice(0,10))}</td>
+            <td><a class="btn-secondary btn-sm" href="/admin/email-templates#${encodeURIComponent(t.key)}">Edit →</a></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch (err) {
+    host.innerHTML = `<p style="color:var(--err-fg)">Failed to load: ${admEscapeHtml(err.message)}</p>`;
+  }
+}
+
+document.getElementById("adm-cleanup-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("adm-cleanup-btn");
+  // Dry-run first to show the admin what will be deleted.
+  btn.disabled = true; btn.textContent = "Scanning…";
+  try {
+    const dr = await fetch("/api/templates/cleanup-orphaned-docx?dry_run=true", {
+      method:"POST", credentials:"include",
+    });
+    if (!dr.ok) throw new Error(await dr.text() || dr.statusText);
+    const preview = await dr.json();
+    if (!preview.deleted.length){
+      alert("Nothing to clean up — no orphaned files found.");
+      return;
+    }
+    const list = preview.deleted.map(f => `  • ${f}`).join("\n");
+    if (!confirm(
+      `The following ${preview.deleted.length} orphaned file(s) will be deleted:\n\n` +
+      list + "\n\n" +
+      `Active template files (${preview.kept.length}) will be kept.\n\n` +
+      `Proceed with deletion?`
+    )) return;
+    // Actually delete.
+    const r = await fetch("/api/templates/cleanup-orphaned-docx?dry_run=false", {
+      method:"POST", credentials:"include",
+    });
+    if (!r.ok) throw new Error(await r.text() || r.statusText);
+    const data = await r.json();
+    const errCount = Object.keys(data.errors || {}).length;
+    alert(
+      `Cleanup complete.\n` +
+      `  Deleted: ${data.total_deleted} file(s)\n` +
+      `  Kept: ${data.total_kept} file(s)\n` +
+      (errCount ? `  Errors: ${errCount} (see server logs)\n` : "") +
+      `\nDeleted:\n${data.deleted.map(f => "  • " + f).join("\n")}`
+    );
+    admLoadReportTemplates();
+  } catch (err) {
+    alert("Cleanup failed: " + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "🗑 Clean up old files";
+  }
+});
+
+document.getElementById("adm-reinject-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("adm-reinject-btn");
+  if (!confirm(
+    "Re-inject Jinja2 placeholders into all Word templates?\n\n" +
+    "This updates docProps/custom.xml so that LibreOffice resolves the correct\n" +
+    "client name, app name and report date when converting DOCX → PDF.\n\n" +
+    "Only templates that don't already have the injection are processed — safe to\n" +
+    "run multiple times. Existing docxtpl placeholders in the document body are\n" +
+    "never touched."
+  )) return;
+  btn.disabled = true; btn.textContent = "Injecting…";
+  try {
+    const r = await fetch("/api/templates/reinject-all", {
+      method: "POST", credentials: "include",
+    });
+    if (!r.ok) throw new Error(await r.text() || r.statusText);
+    const data = await r.json();
+    alert(
+      `Re-injection complete:\n` +
+      `  • ${data.injected.length} template(s) updated\n` +
+      `  • ${data.already_ok.length} already had Jinja2\n` +
+      (Object.keys(data.skipped || {}).length
+        ? `  • ${Object.keys(data.skipped).length} skipped (see server logs)\n`
+        : "") +
+      `\nUpdated: ${data.injected.join(", ") || "(none)"}`
+    );
+    admLoadReportTemplates();
+  } catch (err) {
+    alert("Re-injection failed: " + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "⚡ Re-inject placeholders";
+  }
+});
+
+document.getElementById("adm-regen-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("adm-regen-btn");
+  if (!confirm(
+    "Regenerate every master template from its VibeDocs source?\n\n" +
+    "This overwrites the canonical .docx files used at render time. " +
+    "Admin-uploaded replacements (Replace .docx button) are NOT touched."
+  )) return;
+  btn.disabled = true; btn.textContent = "Regenerating…";
+  try {
+    const r = await fetch("/api/templates/regenerate-defaults", {
+      method: "POST", credentials: "include",
+    });
+    if (!r.ok) throw new Error(await r.text() || r.statusText);
+    const data = await r.json();
+    const vibedocs = Object.values(data.summary || {}).filter(v => String(v).startsWith("vibedocs:")).length;
+    const simple   = Object.values(data.summary || {}).filter(v => v === "simple").length;
+    alert(`Regenerated ${Object.keys(data.summary || {}).length} templates:\n` +
+          `  • ${vibedocs} from VibeDocs sources\n` +
+          `  • ${simple} simple-fallback (no VibeDocs source bundled).`);
+    admLoadReportTemplates();
+  } catch (err) {
+    alert("Regeneration failed: " + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "↻ Regenerate from VibeDocs sources";
+  }
+});
+
+document.getElementById("adm-diagnose-btn").addEventListener("click", async () => {
+  try {
+    const r = await fetch("/api/templates/diagnose-defaults", {credentials:"include"});
+    if (!r.ok) throw new Error(await r.text() || r.statusText);
+    const data = await r.json();
+    let msg = `Templates directory:\n  ${data.template_dir}\n\n` +
+              `VibeDocs sources directory:\n  ${data.report_templates_dir}\n\n`;
+    for (const row of data.rows){
+      msg += `${row.output_filename}\n`;
+      msg += `  size:   ${admFormatBytes(row.output_size)}\n`;
+      msg += `  source: ${row.vibedocs_source || '(simple fallback)'}\n\n`;
+    }
+    alert(msg);
+  } catch (err) {
+    alert("Diagnose failed: " + err.message);
+  }
+});
+
+function admEscapeHtml(s) {
+  return (s == null ? '' : String(s))
+    .replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+function admFormatBytes(n) {
+  if (n == null) return '—';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+admLoadReportTemplates();
+</script>

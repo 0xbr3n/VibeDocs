@@ -1,0 +1,480 @@
+{% extends "base.html" %}
+{% block title %}New Report - VAPT Reporter{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>New Report</h1>
+    <p class="page-sub">
+      {% if selected_project %}
+        Under project <a href="/projects/{{ selected_project.id }}">{{ selected_project.name }}</a>
+      {% else %}
+        Create a new deliverable inside an existing project
+      {% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    <a href="{% if selected_project %}/projects/{{ selected_project.id }}{% else %}/projects{% endif %}"
+       class="btn-secondary">← Back</a>
+  </div>
+</div>
+
+<form id="new-report-form" class="card form-vertical" style="margin-top:20px;max-width:680px">
+  <label>
+    Project
+    <select name="project_id" id="project-select" required>
+      {% if not selected_project %}
+        <option value="" disabled selected>-- Select a project --</option>
+      {% endif %}
+      {% for p in projects %}
+        <option value="{{ p.id }}"
+          {% if selected_project and selected_project.id == p.id %}selected{% endif %}>
+          {{ p.name }} <!-- ({{ p.client_name }}) -->
+        </option>
+      {% endfor %}
+    </select>
+    {% if not projects %}
+      <small class="muted">No projects yet — <a href="/projects/new">create one</a> first.</small>
+    {% endif %}
+  </label>
+
+  <label>
+    Report template
+    <select name="template_id" id="template-select" required>
+      <option value="" disabled selected>Loading templates…</option>
+    </select>
+    <small class="muted">Determines which Word template and findings library scope this report uses.</small>
+  </label>
+
+  <label>
+    Report name
+    <input name="name" id="report-name" required
+           placeholder="e.g. Q2 Web Application Pentest">
+  </label>
+
+  <label>
+    Initial version
+    <input name="initial_version" value="0.1" pattern="^\d+(\.\d+)?$"
+           title="Use a semver-like number e.g. 0.1, 0.2, 1.0">
+    <small class="muted">Auto-increments on every regenerate (0.1 → 0.2 → 1.0 …).</small>
+  </label>
+
+  {# Report-type picker. Required at creation so the report's first
+     version never lands as "Uncategorised" on the versions list.
+     Match the codes the backend's `_REPORT_KINDS` accepts. #}
+  <label>
+    Report type <span style="color:var(--err-fg)">*</span>
+    <select name="report_kind" id="report-kind" required>
+      <option value="" disabled selected>— Select report type —</option>
+      <option value="initial">Initial Report</option>
+      <option value="retest">Retest Report</option>
+      <option value="final">Final Report</option>
+      <option value="update">Report Update</option>
+    </select>
+    <small class="muted">Marks this version's milestone on the versions
+      list. Pickable per-version later via the inline edit on each row.</small>
+  </label>
+
+  <!-- ============================================================
+       Inline scope import — moved here from the project detail page.
+       Only relevant to infrastructure-style report templates
+       (template.supports_nessus_import == true: infra_va, infra_vapt,
+       and any IoT template flagged by an admin). The block stays
+       hidden until the user picks a supported template; the JS below
+       toggles it based on the loaded template metadata. The parsed
+       scope is applied to the parent project AFTER the report is
+       created so we have a report id to attribute the audit log to.
+       ============================================================ -->
+  <div id="scope-import-block" hidden style="border:1px solid var(--border);
+       border-radius:8px;padding:14px 16px;background:var(--surface-2)">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+      <strong style="font-size:14px">📥 Import scope (optional)</strong>
+      <span class="badge badge-accent" id="scope-import-tpl-label">Infra report</span>
+    </div>
+    <p class="small muted" style="margin:0 0 10px">
+      Upload a Nessus CSV (<code>.csv</code>) or your VibeDocs Excel tracker
+      (<code>.xlsx</code>) and we'll extract IPs, CIDRs, ranges, and hostnames
+      and load them as this report's scope. You'll be able to prune the
+      list before it's saved.
+    </p>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <label style="flex:1;margin:0;min-width:240px">
+        File
+        <input type="file" id="scope-file" accept=".csv,.xlsx,.xls,.xlsm">
+      </label>
+      <button type="button" class="btn-secondary btn-sm" id="scope-parse-btn">Parse</button>
+      <button type="button" class="btn-link small" id="scope-skip-btn"
+              title="Hide this section — you can always import later from the report detail page">
+        Skip
+      </button>
+    </div>
+    <p id="scope-parse-msg" class="small" style="margin:8px 0 0;min-height:1.4em"></p>
+
+    <div id="scope-edit-block" hidden style="margin-top:10px">
+      <p class="small muted" id="scope-edit-summary" style="margin:0 0 4px"></p>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 4px">
+        <label for="scope-edit-targets" class="small" style="margin:0;font-weight:600">
+          Edit targets before saving
+        </label>
+        <span class="small muted" id="scope-edit-count">0 targets</span>
+      </div>
+      <p class="small muted" style="margin:0 0 6px">
+        One target per line. Remove wrong / out-of-scope values; blank lines are ignored.
+      </p>
+      <textarea id="scope-edit-targets" spellcheck="false" autocomplete="off"
+                placeholder="One IP, CIDR, range, or hostname per line"
+                style="width:100%;min-height:180px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.5"></textarea>
+      <div class="actions" style="margin-top:8px;gap:6px;flex-wrap:wrap">
+        <button type="button" class="btn-secondary btn-sm" id="scope-edit-clear">Clear all</button>
+        <button type="button" class="btn-secondary btn-sm" id="scope-edit-tidy">Tidy up</button>
+        <label style="display:inline-flex;align-items:center;gap:6px;margin:0 0 0 8px">
+          <input type="radio" name="scope-edit-mode" value="merge" checked> Merge with project scope
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;margin:0">
+          <input type="radio" name="scope-edit-mode" value="replace"> Replace project scope
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button type="submit" class="btn-primary">Create report</button>
+    <a href="{% if selected_project %}/projects/{{ selected_project.id }}{% else %}/projects{% endif %}"
+       class="btn-secondary">Cancel</a>
+  </div>
+
+  <p id="form-msg" class="small" style="min-height:1.4em;margin-top:6px"></p>
+</form>
+
+<script nonce="{{ request.state.csp_nonce }}">
+(function(){
+  const tplSelect = document.getElementById('template-select');
+  const projSelect = document.getElementById('project-select');
+  const form = document.getElementById('new-report-form');
+  const msg = document.getElementById('form-msg');
+
+  // ----- Scope import widgets (only meaningful for infra / iot templates) -----
+  const scopeBlock     = document.getElementById('scope-import-block');
+  const scopeTplLabel  = document.getElementById('scope-import-tpl-label');
+  const scopeFileInput = document.getElementById('scope-file');
+  const scopeParseBtn  = document.getElementById('scope-parse-btn');
+  const scopeSkipBtn   = document.getElementById('scope-skip-btn');
+  const scopeParseMsg  = document.getElementById('scope-parse-msg');
+  const scopeEdit      = document.getElementById('scope-edit-block');
+  const scopeEditSummary = document.getElementById('scope-edit-summary');
+  const scopeEditCount = document.getElementById('scope-edit-count');
+  const scopeEditTa    = document.getElementById('scope-edit-targets');
+  const scopeEditClear = document.getElementById('scope-edit-clear');
+  const scopeEditTidy  = document.getElementById('scope-edit-tidy');
+
+  // Indexed once on template load so we can flip the scope-import block
+  // on / off as the user changes their template choice without re-fetching.
+  // Keys are MASTER template ids (the canonical id we care about for
+  // capability flags). Custom templates inherit their parent master's
+  // capabilities via their `template_type` code.
+  let templatesById = {};
+  // Code -> master id, so a custom-template selection (which only knows
+  // its template_type code, not the master id) can resolve to the
+  // correct master.
+  let masterIdByCode = {};
+  // Approved customs, indexed by their own id.
+  let customsById = {};
+  let scopeImportSkipped = false;
+
+  function _parseSelection(){
+    /* Returns {kind:'master'|'custom', id:int, masterId:int|null}
+       or null if the picker is empty. */
+    const raw = (tplSelect.value || '').trim();
+    if (!raw) return null;
+    const m = raw.match(/^(master|custom):(\d+)$/);
+    if (!m){
+      // Backwards-compat for legacy "12" plain-id values.
+      const n = parseInt(raw, 10);
+      if (!isNaN(n)) return {kind:'master', id:n, masterId:n};
+      return null;
+    }
+    const kind = m[1]; const id = parseInt(m[2], 10);
+    if (kind === 'master') return {kind, id, masterId:id};
+    const cust = customsById[String(id)];
+    const masterId = cust ? (masterIdByCode[cust.template_type] || null) : null;
+    return {kind, id, masterId};
+  }
+  function templateSupportsImport(){
+    const sel = _parseSelection();
+    if (!sel || sel.masterId == null) return false;
+    const t = templatesById[String(sel.masterId)];
+    return !!(t && t.supports_nessus_import);
+  }
+  function updateScopeBlockVisibility(){
+    const ok = templateSupportsImport() && !scopeImportSkipped;
+    scopeBlock.hidden = !ok;
+    if (!ok){
+      // Reset the editor so a previously-uploaded file doesn't silently
+      // apply when the user picks a non-infra template after the fact.
+      scopeEdit.hidden = true;
+      if (scopeFileInput) scopeFileInput.value = '';
+      if (scopeEditTa)    scopeEditTa.value = '';
+      scopeParseMsg.textContent = '';
+    }
+    if (ok && scopeTplLabel){
+      const sel = _parseSelection();
+      const t = sel && sel.masterId != null ? templatesById[String(sel.masterId)] : null;
+      scopeTplLabel.textContent = t ? t.name : 'Infra report';
+    }
+  }
+
+  async function loadTemplates(){
+    // We fetch BOTH master templates AND approved custom templates and
+    // render them in a single dropdown grouped by <optgroup>. Option
+    // values are encoded as "master:<id>" / "custom:<id>" so the
+    // submit handler can pick the right code path.
+    try {
+      const [masterRes, customRes] = await Promise.all([
+        fetch('/api/templates', {credentials:'include'}),
+        fetch('/api/templates/custom/', {credentials:'include'}),
+      ]);
+      if (!masterRes.ok) throw new Error('master templates: HTTP ' + masterRes.status);
+      const masters = await masterRes.json();
+      let customs = [];
+      if (customRes.ok){
+        try { customs = await customRes.json(); }
+        catch(_) { customs = []; }
+      }
+      if (!masters.length){
+        tplSelect.innerHTML = '<option value="" disabled selected>No templates available — ask an admin to seed them</option>';
+        return;
+      }
+
+      // Index masters by id + code so a custom-template option can
+      // resolve back to the right master at submit time.
+      templatesById = {};
+      masterIdByCode = {};
+      for (const t of masters){
+        templatesById[String(t.id)] = t;
+        if (t.code) masterIdByCode[t.code] = t.id;
+      }
+
+      // Approved customs only — show ones that are status=='approved'
+      // and is_public=true, plus the caller's own private drafts so
+      // they can test before submitting for review. The status flag
+      // comes from /api/templates/custom/ which already gated visibility.
+      const approvedCustoms = customs.filter(c =>
+        c.status === 'approved' || c.is_mine
+      );
+      customsById = {};
+      for (const c of approvedCustoms) customsById[String(c.id)] = c;
+
+      // Render: master optgroup always, custom optgroup only when there
+      // are any approved entries (avoids an empty submenu).
+      const masterOptions = masters.map(t =>
+        `<option value="master:${t.id}">${escapeHtml(t.name)}</option>`
+      ).join('');
+      let html = '<option value="" disabled selected>-- Select a template --</option>'
+               + `<optgroup label="Master templates">${masterOptions}</optgroup>`;
+      if (approvedCustoms.length){
+        const customOptions = approvedCustoms.map(c => {
+          const mine = c.is_mine && c.status !== 'approved' ? ' · your draft' : '';
+          return `<option value="custom:${c.id}" data-template-type="${escapeHtml(c.template_type)}">`
+               + `${escapeHtml(c.name)} (${escapeHtml(c.template_type)})${mine}</option>`;
+        }).join('');
+        html += `<optgroup label="Approved custom templates">${customOptions}</optgroup>`;
+      }
+      tplSelect.innerHTML = html;
+      updateScopeBlockVisibility();
+    } catch (err) {
+      tplSelect.innerHTML = `<option value="" disabled selected>Failed to load templates: ${escapeHtml(err.message)}</option>`;
+    }
+  }
+
+  // Scope-import preview helpers (mirror the textarea-driven UX that used
+  // to live on the project detail page — same parser, same edit affordances).
+  function scopeParseLines(){
+    return (scopeEditTa.value || '')
+      .split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  }
+  function scopeUpdateCount(){
+    const n = scopeParseLines().length;
+    scopeEditCount.textContent = n === 1 ? '1 target' : `${n} targets`;
+  }
+  if (scopeEditTa) scopeEditTa.addEventListener('input', scopeUpdateCount);
+  if (scopeEditClear){
+    scopeEditClear.addEventListener('click', () => {
+      scopeEditTa.value = ''; scopeUpdateCount(); scopeEditTa.focus();
+    });
+  }
+  if (scopeEditTidy){
+    scopeEditTidy.addEventListener('click', () => {
+      const seen = new Set(); const out = [];
+      for (const line of scopeParseLines()){
+        if (!seen.has(line)){ seen.add(line); out.push(line); }
+      }
+      scopeEditTa.value = out.join('\n');
+      scopeUpdateCount();
+    });
+  }
+  if (scopeSkipBtn){
+    scopeSkipBtn.addEventListener('click', () => {
+      scopeImportSkipped = true;
+      updateScopeBlockVisibility();
+    });
+  }
+  if (tplSelect) tplSelect.addEventListener('change', updateScopeBlockVisibility);
+
+  // Parse the uploaded file via the new report-level endpoint. We can't
+  // call /scope/parse until a report id exists — so for the create-then-
+  // import flow we POST against a placeholder route? No: the parser
+  // doesn't need a report id, it only inspects the file. We piggyback
+  // on the existing /api/projects/{pid}/scope/parse since the result is
+  // the same. After Create, the report-level /apply runs.
+  if (scopeParseBtn){
+    scopeParseBtn.addEventListener('click', async () => {
+      const pid = parseInt(projSelect.value, 10);
+      const file = scopeFileInput && scopeFileInput.files && scopeFileInput.files[0];
+      if (!pid){
+        scopeParseMsg.textContent = 'Pick a project first so we can show new-vs-existing targets.';
+        scopeParseMsg.style.color = 'var(--err-fg)';
+        return;
+      }
+      if (!file){
+        scopeParseMsg.textContent = 'Choose a CSV / Excel file to parse.';
+        scopeParseMsg.style.color = 'var(--err-fg)';
+        return;
+      }
+      scopeParseMsg.textContent = 'Parsing…';
+      scopeParseMsg.style.color = 'var(--text-2)';
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const r = await fetch(`/api/projects/${pid}/scope/parse`,
+                              {method:'POST', body:fd, credentials:'include'});
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail || r.statusText);
+        const newCount = (data.new_targets || []).length;
+        scopeEditSummary.textContent =
+          `${data.host_count} target(s) extracted from ${data.source} — ${newCount} new vs current project scope. ` +
+          `Prune the list, then click Create report to save.`;
+        scopeEditTa.value = (data.all_targets || []).join('\n');
+        scopeUpdateCount();
+        scopeEdit.hidden = false;
+        scopeParseMsg.textContent = '';
+        try { scopeEditTa.focus(); } catch(_){}
+      } catch (err){
+        scopeParseMsg.textContent = 'Failed: ' + err.message;
+        scopeParseMsg.style.color = 'var(--err-fg)';
+      }
+    });
+  }
+
+  // ----- Submit handler: create the report, then (if applicable) apply scope -----
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    msg.textContent = '';
+    const fd = new FormData(form);
+    const project_id = parseInt(fd.get('project_id'), 10);
+    const name = (fd.get('name') || '').trim();
+    const initial_version = (fd.get('initial_version') || '0.1').trim() || '0.1';
+    const report_kind = (fd.get('report_kind') || '').trim();
+    if (!report_kind){
+      msg.textContent = 'Pick a report type before creating.';
+      msg.style.color = 'var(--err-fg)';
+      try { document.getElementById('report-kind').focus(); } catch(_) {}
+      return;
+    }
+
+    // Selection encodes both kind + id. For custom templates we still
+    // need a master template_id at create time (the schema requires
+    // it), so we look up the master associated with the custom's
+    // template_type. After the report is created we issue a follow-up
+    // POST /template call to bind the custom layout.
+    const sel = _parseSelection();
+    if (!project_id || !sel || !sel.masterId || !name){
+      msg.textContent = 'Project, template, and name are required.';
+      msg.style.color = 'var(--err-fg)';
+      return;
+    }
+    const template_id = sel.masterId;
+    const custom_template_id = (sel.kind === 'custom') ? sel.id : null;
+
+    msg.textContent = 'Creating…';
+    msg.style.color = 'var(--text-2)';
+
+    try {
+      const r = await fetch('/api/reports', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'include',
+        body: JSON.stringify({
+          project_id, template_id, name,
+          initial_version,
+          report_kind,
+          details: {},
+        }),
+      });
+      if (!r.ok){
+        let detail = r.statusText;
+        try { detail = (await r.json()).detail || detail; } catch(_){}
+        throw new Error(detail);
+      }
+      const created = await r.json();
+
+      // If the user picked a custom template, bind it as the .docx
+      // override now. Failure is non-fatal — the report still opens on
+      // its master layout and the user can re-select on the report page.
+      if (custom_template_id){
+        try {
+          const cr = await fetch(`/api/reports/${created.id}/template`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            credentials:'include',
+            body: JSON.stringify({custom_template_id}),
+          });
+          if (!cr.ok){
+            const cd = await cr.json().catch(() => ({}));
+            console.warn('Custom template binding failed:', cd.detail || cr.statusText);
+          }
+        } catch (err){
+          console.warn('Custom template binding error:', err);
+        }
+      }
+
+      // If the user uploaded + edited a scope file AND the picked
+      // template supports import, apply it now. We deliberately do this
+      // AFTER the report is created so the audit log row points at a
+      // real report id; failure here doesn't roll back the report —
+      // the user can re-import later.
+      const targets = scopeParseLines();
+      if (templateSupportsImport(template_id) && !scopeImportSkipped && targets.length){
+        const mode = (document.querySelector('input[name="scope-edit-mode"]:checked') || {}).value || 'merge';
+        try {
+          const ar = await fetch(`/api/reports/${created.id}/scope/apply`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            credentials:'include',
+            body: JSON.stringify({targets, mode}),
+          });
+          if (!ar.ok){
+            const ad = await ar.json().catch(() => ({}));
+            // Surface a soft warning but proceed to the report page so
+            // the user isn't stuck — they can re-attempt import later.
+            console.warn('Scope import failed:', ad.detail || ar.statusText);
+          }
+        } catch (err){
+          console.warn('Scope import error:', err);
+        }
+      }
+
+      window.location = '/reports/' + created.id;
+    } catch (err) {
+      msg.textContent = 'Failed: ' + err.message;
+      msg.style.color = 'var(--err-fg)';
+    }
+  });
+
+  function escapeHtml(s){
+    return (s == null ? '' : String(s)).replace(/[&<>"']/g,
+      c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  loadTemplates();
+})();
+</script>
+{% endblock %}

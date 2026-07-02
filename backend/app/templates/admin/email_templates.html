@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Email Templates - VAPT Reporter{% endblock %}
+{% block body_class %}is-wide{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Email Templates</h1>
+    <p class="page-sub">Admin-editable subject / text / HTML bodies for every outbound email.</p>
+  </div>
+  <div class="actions">
+    <button class="btn-secondary" id="reseed-btn"
+            title="Add any default template keys missing from the DB. Existing edits are kept.">
+      ↻ Reseed defaults
+    </button>
+    <a class="btn-secondary" href="http://{{ request.url.hostname }}:8025" target="_blank" rel="noopener"
+       title="Open Mailpit (dev SMTP inbox) in a new tab">
+      ✉ Open Mailpit inbox →
+    </a>
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <div class="card-h">
+    <h2>Templates</h2>
+    <span class="muted small" id="tpl-status"></span>
+  </div>
+  <div style="display:grid;grid-template-columns:280px 1fr;gap:0;min-height:520px">
+    <!-- Left rail: list -->
+    <aside id="tpl-list" style="border-right:1px solid var(--border);overflow:auto">
+      <p class="muted small" style="padding:14px">Loading…</p>
+    </aside>
+
+    <!-- Right pane: editor -->
+    <div id="tpl-editor" style="padding:16px 18px;display:none;flex-direction:column;gap:12px">
+      <div>
+        <h3 id="tpl-title" style="margin:0 0 4px;font-size:15px"></h3>
+        <p class="muted small" id="tpl-description" style="margin:0"></p>
+        <p class="muted small" style="margin:8px 0 0">
+          Variables available in this template:
+          <span id="tpl-vars" class="muted small"></span>
+        </p>
+      </div>
+
+      <label>
+        Subject
+        <input type="text" id="tpl-subject" autocomplete="off">
+      </label>
+
+      <label>
+        Plain-text body
+        <textarea id="tpl-text" rows="10"
+                  style="font-family:ui-monospace,Consolas,monospace;font-size:12.5px"></textarea>
+      </label>
+
+      <label>
+        HTML body
+        <textarea id="tpl-html" rows="18"
+                  style="font-family:ui-monospace,Consolas,monospace;font-size:12.5px"></textarea>
+      </label>
+
+      <div class="actions" style="gap:8px;align-items:center">
+        <button class="btn-primary" id="tpl-save">Save</button>
+        <button class="btn-secondary" id="tpl-preview">Preview</button>
+        <span style="flex:1"></span>
+        <input type="email" id="tpl-test-to" placeholder="you@example.com"
+               style="width:240px">
+        <button class="btn-secondary" id="tpl-test"
+                title="Send the SAVED template to this address (good for SMTP testing)">
+          Send test ✉
+        </button>
+      </div>
+      <p id="tpl-msg" class="small" style="min-height:1.4em;margin:0"></p>
+
+      <!-- Preview pane (collapsed by default) -->
+      <details id="tpl-preview-block" style="margin-top:8px">
+        <summary style="cursor:pointer;font-weight:600">Preview output</summary>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+          <div>
+            <div class="muted small" style="margin:0 0 4px">Subject</div>
+            <pre id="prev-subject" class="result-pane"></pre>
+            <div class="muted small" style="margin:8px 0 4px">Plain text</div>
+            <pre id="prev-text" class="result-pane"></pre>
+          </div>
+          <div>
+            <div class="muted small" style="margin:0 0 4px">HTML (rendered)</div>
+            <iframe id="prev-html-frame"
+                    style="width:100%;height:340px;border:1px solid var(--border);
+                           border-radius:6px;background:#fff"></iframe>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<style>
+.tpl-row{
+  display:block;padding:11px 14px;border-bottom:1px solid var(--border);
+  cursor:pointer;color:inherit;text-decoration:none;
+  transition:background .12s;
+}
+.tpl-row:hover{background:var(--surface-2)}
+.tpl-row.active{background:var(--accent-soft);border-left:3px solid var(--accent-dark);padding-left:11px}
+.tpl-row strong{display:block;font-size:13px}
+.tpl-row .muted{font-size:11.5px;display:block;margin-top:3px}
+.result-pane{
+  background:var(--surface-2);border:1px solid var(--border);border-radius:6px;
+  padding:10px 12px;font-size:12px;line-height:1.45;max-height:340px;overflow:auto;
+  white-space:pre-wrap;color:var(--text);
+}
+</style>
+
+<script nonce="{{ request.state.csp_nonce }}">
+{# Wrap the whole client-side script in {% raw %} so Jinja doesn't try to
+   parse the `{{ ${varname} }}` JS template-literal patterns inside as its
+   own expressions. The entire body of this <script nonce="{{ request.state.csp_nonce }}"> is plain JavaScript
+   that runs in the browser — no server-side templating happens here. #}
+{% raw %}
+const $ = (s) => document.querySelector(s);
+const status_ = $("#tpl-status");
+const listEl  = $("#tpl-list");
+const editor  = $("#tpl-editor");
+let _current = null;
+
+async function api(path, opts){
+  const r = await fetch(path, { credentials:"include", ...(opts || {}) });
+  let body = null; try { body = await r.json(); } catch(_) {}
+  if (!r.ok) throw new Error((body && body.detail) || r.statusText);
+  return body;
+}
+
+function escHtml(s){
+  return (s == null ? "" : String(s)).replace(/[&<>"']/g,
+    c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+async function loadList(){
+  listEl.innerHTML = '<p class="muted small" style="padding:14px">Loading…</p>';
+  try {
+    const items = await api("/api/admin/email-templates");
+    if (!items.length){
+      listEl.innerHTML = '<p class="muted small" style="padding:14px">No templates seeded yet. Click Reseed defaults.</p>';
+      return;
+    }
+    listEl.innerHTML = items.map(t => `
+      <a class="tpl-row" data-key="${escHtml(t.key)}">
+        <strong>${escHtml(t.key)}</strong>
+        <span class="muted">${escHtml(t.description || "—")}</span>
+      </a>`).join("");
+    for (const a of listEl.querySelectorAll(".tpl-row")){
+      a.addEventListener("click", () => selectTemplate(a.dataset.key));
+    }
+    // Auto-select first
+    selectTemplate(items[0].key);
+  } catch (e){
+    listEl.innerHTML = `<p style="padding:14px;color:var(--err-fg)">${escHtml(e.message)}</p>`;
+  }
+}
+
+async function selectTemplate(key){
+  for (const a of listEl.querySelectorAll(".tpl-row"))
+    a.classList.toggle("active", a.dataset.key === key);
+  status_.textContent = "Loading " + key + "…";
+  try {
+    const t = await api("/api/admin/email-templates/" + encodeURIComponent(key));
+    _current = t;
+    $("#tpl-title").textContent       = t.key;
+    $("#tpl-description").textContent = t.description || "";
+    $("#tpl-vars").innerHTML = (t.allowed_variables || [])
+      .map(v => `<code>{{ ${escHtml(v)} }}</code>`).join(" ");
+    $("#tpl-subject").value = t.subject || "";
+    $("#tpl-text").value    = t.body_text || "";
+    $("#tpl-html").value    = t.body_html || "";
+    $("#tpl-msg").textContent = "";
+    $("#tpl-preview-block").open = false;
+    editor.style.display = "flex";
+    status_.textContent = (t.updated_at ? "Last edited " + t.updated_at.slice(0,16).replace("T"," ") : "");
+  } catch (e){
+    status_.textContent = "Failed: " + e.message;
+  }
+}
+
+$("#tpl-save").addEventListener("click", async () => {
+  if (!_current) return;
+  const msg = $("#tpl-msg");
+  msg.textContent = "Saving…"; msg.style.color = "var(--text-2)";
+  try {
+    await api("/api/admin/email-templates/" + encodeURIComponent(_current.key), {
+      method:"PUT",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({
+        subject:   $("#tpl-subject").value,
+        body_text: $("#tpl-text").value,
+        body_html: $("#tpl-html").value,
+      }),
+    });
+    msg.textContent = "✓ Saved."; msg.style.color = "var(--ok-fg)";
+    await loadList();
+    selectTemplate(_current.key);
+  } catch (e){
+    msg.textContent = "Failed: " + e.message; msg.style.color = "var(--err-fg)";
+  }
+});
+
+$("#tpl-preview").addEventListener("click", async () => {
+  if (!_current) return;
+  const msg = $("#tpl-msg");
+  msg.textContent = "Rendering…"; msg.style.color = "var(--text-2)";
+  try {
+    const out = await api("/api/admin/email-templates/" + encodeURIComponent(_current.key) + "/preview", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({
+        subject:   $("#tpl-subject").value,
+        body_text: $("#tpl-text").value,
+        body_html: $("#tpl-html").value,
+      }),
+    });
+    if (!out.ok){ msg.textContent = "Render failed: " + (out.error || "?"); msg.style.color = "var(--err-fg)"; return; }
+    $("#prev-subject").textContent = out.subject || "";
+    $("#prev-text").textContent    = out.body_text || "";
+    const blob = new Blob([out.body_html || ""], {type:"text/html"});
+    $("#prev-html-frame").src = URL.createObjectURL(blob);
+    $("#tpl-preview-block").open = true;
+    msg.textContent = "✓ Rendered with sample data.";
+    msg.style.color = "var(--ok-fg)";
+  } catch (e){
+    msg.textContent = "Failed: " + e.message; msg.style.color = "var(--err-fg)";
+  }
+});
+
+$("#tpl-test").addEventListener("click", async () => {
+  if (!_current) return;
+  const to = $("#tpl-test-to").value.trim();
+  if (!to){ $("#tpl-msg").textContent = "Enter a recipient email first."; $("#tpl-msg").style.color = "var(--err-fg)"; return; }
+  const msg = $("#tpl-msg");
+  msg.textContent = "Sending test…"; msg.style.color = "var(--text-2)";
+  try {
+    const out = await api("/api/admin/email-templates/" + encodeURIComponent(_current.key) + "/test", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ to }),
+    });
+    msg.textContent = out.ok ? `✓ Test sent to ${out.to}. Check Mailpit / your inbox.`
+                              : `✗ Send failed — check SMTP_HOST in .env and the app logs.`;
+    msg.style.color = out.ok ? "var(--ok-fg)" : "var(--err-fg)";
+  } catch (e){
+    msg.textContent = "Failed: " + e.message; msg.style.color = "var(--err-fg)";
+  }
+});
+
+$("#reseed-btn").addEventListener("click", async () => {
+  if (!confirm("Reseed any missing default templates? Existing edits are preserved.")) return;
+  try {
+    const s = await api("/api/admin/email-templates/reseed", {method:"POST"});
+    alert(`Seeded ${s.seeded}, skipped ${s.skipped}.`);
+    await loadList();
+  } catch (e){ alert("Failed: " + e.message); }
+});
+
+loadList();
+{% endraw %}
+</script>
+{% endblock %}

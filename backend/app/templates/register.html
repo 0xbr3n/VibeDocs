@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Register{% endblock %}
+{% block content %}
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--surface)">
+  <div class="card" style="max-width:400px;width:100%">
+    <div class="card-h">
+      <h2>Create Account</h2>
+    </div>
+    <form id="register-form" style="padding:20px">
+      <label>
+        Username
+        <input name="username" required placeholder="e.g., jsmith" pattern="[a-zA-Z0-9_]{3,20}" title="3-20 alphanumeric characters">
+      </label>
+      <label>
+        Email (optional)
+        <input type="email" name="email" placeholder="john.smith@example.com">
+      </label>
+      <label>
+        Password
+        <input type="password" name="password" required minlength="8" placeholder="Min 8 characters">
+      </label>
+      <label>
+        Confirm Password
+        <input type="password" name="confirm_password" required minlength="8">
+      </label>
+      <div class="actions" style="margin-top:16px">
+        <button type="submit" class="btn-primary" style="width:100%">Create Account</button>
+      </div>
+      <p id="status" class="small" style="margin-top:12px;text-align:center"></p>
+      <p class="small muted" style="margin-top:16px;text-align:center">
+        Already have an account? <a href="/login">Sign in</a>
+      </p>
+    </form>
+  </div>
+</div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+document.getElementById('register-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const status = document.getElementById('status');
+  const fd = new FormData(e.target);
+  
+  // Validate passwords match
+  if (fd.get('password') !== fd.get('confirm_password')) {
+    status.textContent = '❌ Passwords do not match';
+    status.style.color = 'red';
+    return;
+  }
+  
+  status.textContent = 'Creating account...';
+  status.style.color = '#999';
+  
+  try {
+    const resp = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        username: fd.get('username'),
+        email: fd.get('email') || null,
+        password: fd.get('password'),
+      }),
+      credentials: 'include'
+    });
+    
+    const data = await resp.json();
+    
+    if (resp.ok) {
+      status.textContent = '✓ Account created! Redirecting...';
+      status.style.color = 'green';
+      setTimeout(() => {
+        window.location = '/login';
+      }, 1500);
+    } else {
+      status.textContent = '❌ ' + (data.detail || 'Registration failed');
+      status.style.color = 'red';
+    }
+  } catch (err) {
+    status.textContent = '❌ Error: ' + err.message;
+    status.style.color = 'red';
+  }
+});
+</script>
+{% endblock %}

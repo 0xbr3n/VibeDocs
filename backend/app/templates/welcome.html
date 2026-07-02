@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Welcome - VibeDocs{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="card auth-card" style="max-width:460px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+      <span class="brand-mark" aria-label="VibeDocs">
+        VibeDocs<span class="dot"></span>
+      </span>
+      <div>
+        <h1 style="margin:0;font-size:18px">Report Generator</h1>
+        <p class="muted small" style="margin:1px 0 0">VibeDocs · A vibecoded report generator</p>
+      </div>
+    </div>
+
+    <p class="muted small" style="margin:0 0 16px">How would you like to work?</p>
+
+    {# ── Local / Standalone (no login) ─────────────────────────────────────── #}
+    {% if local_mode_enabled %}
+    <a href="/local/enter"
+       style="display:flex;align-items:flex-start;gap:12px;width:100%;
+              padding:14px 16px;border-radius:8px;border:1px solid var(--border);
+              background:var(--surface);color:var(--text);text-decoration:none;
+              box-sizing:border-box;margin-bottom:12px;
+              transition:background .15s,border-color .15s,box-shadow .15s,transform .05s"
+       onmouseover="this.style.background='var(--accent-soft)';this.style.borderColor='var(--accent-dark)';this.style.boxShadow='0 3px 10px rgba(0,0,0,.18)'"
+       onmouseout="this.style.background='var(--surface)';this.style.borderColor='var(--border)';this.style.boxShadow='none'">
+      <span style="font-size:22px;line-height:1">🖥️</span>
+      <span>
+        <span style="display:block;font-size:14.5px;font-weight:700;color:var(--accent-dark)">
+          Local / Standalone &nbsp;<span class="muted small" style="font-weight:500">(no login)</span>
+        </span>
+        <span class="muted small" style="display:block;margin-top:3px;line-height:1.45">
+          Start generating reports immediately — no credentials needed.
+          Full access to projects, findings library, custom templates, the
+          CVSS calculator and toolkit. Nothing requires approval.
+        </span>
+      </span>
+    </a>
+    {% endif %}
+
+    {# ── VibeDocs Login / SSO ──────────────────────────────────────────────── #}
+    {# Always shown so the user has an explicit two-way choice; the /login page
+       itself shows the Microsoft SSO button only when SSO_ENABLED. #}
+    <a href="/login"
+       style="display:flex;align-items:flex-start;gap:12px;width:100%;
+              padding:14px 16px;border-radius:8px;border:1px solid var(--border);
+              background:var(--surface);color:var(--text);text-decoration:none;
+              box-sizing:border-box;
+              transition:background .15s,border-color .15s,box-shadow .15s"
+       onmouseover="this.style.background='var(--accent-soft)';this.style.borderColor='var(--accent-dark)';this.style.boxShadow='0 3px 10px rgba(0,0,0,.18)'"
+       onmouseout="this.style.background='var(--surface)';this.style.borderColor='var(--border)';this.style.boxShadow='none'">
+      <span style="font-size:22px;line-height:1">🔐</span>
+      <span>
+        <span style="display:block;font-size:14.5px;font-weight:700">
+          VibeDocs Login / SSO
+        </span>
+        <span class="muted small" style="display:block;margin-top:3px;line-height:1.45">
+          Sign in with your VibeDocs account (username + MFA, or Microsoft
+          single sign-on). Multi-user access control, review workflow and
+          the admin console are enabled.
+        </span>
+      </span>
+    </a>
+
+    <div class="divider" style="margin:18px 0 12px"></div>
+    <div class="muted small" style="display:flex;align-items:center;gap:6px;justify-content:center">
+      🔒 Local mode runs entirely on this machine — nothing leaves the VM.
+    </div>
+  </div>
+</div>
+{% endblock %}

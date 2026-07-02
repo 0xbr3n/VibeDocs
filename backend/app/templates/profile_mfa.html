@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+{% block title %}MFA Settings - VAPT Reporter{% endblock %}
+{% block content %}
+{# Forced-MFA banner — appears when the user lands here from
+   `?forced=1` (the auth gate's redirect target). Until they enrol,
+   every other page redirects them back here, so this banner is the
+   only thing they can interact with besides the enrolment widget. #}
+<div id="mfa-forced-banner" hidden
+     style="background:linear-gradient(90deg,#7C5CFC22,#7C5CFC11);
+            border:1px solid #7C5CFC88;border-left:4px solid #7C5CFC;
+            padding:14px 18px;border-radius:8px;margin:18px 0 0">
+  <h2 style="margin:0 0 4px;font-size:16px;color:#7C5CFC">
+    🔐 Two-factor authentication is required for your account
+  </h2>
+  <p class="small" style="margin:0;line-height:1.5">
+    An administrator has enforced 2FA on your account. You can't access
+    the rest of the system until you finish the setup below — scan the QR
+    code with an authenticator app, then verify the 6-digit code it
+    displays. After that you'll be sent on your way.
+  </p>
+</div>
+
+<div class="page-header">
+  <div>
+    <h1>Multi-Factor Authentication</h1>
+    <p class="muted small" id="mfa-back-link">
+      <a href="/profile">← Back to Profile</a>
+    </p>
+  </div>
+</div>
+
+<div class="card" style="max-width:680px;margin:24px 0">
+  <div class="card-h"><h2>Two-Factor Authentication (TOTP)</h2></div>
+  <div style="padding:20px">
+    <p class="muted small">
+      2FA adds a second factor to your sign-in: a 6-digit code from an
+      authenticator app (Google Authenticator, Microsoft Authenticator,
+      Authy, 1Password, FreeOTP, etc.).
+    </p>
+
+    <!-- ====== Live status panel (filled by JS) ====== -->
+    <div id="mfa-status" style="margin-top:16px">
+      <p class="muted small">Loading status…</p>
+    </div>
+  </div>
+</div>
+
+<!-- ====== Enrollment panel (hidden until user clicks Enable) ====== -->
+<div id="mfa-enroll" class="card" style="max-width:680px;margin:24px 0" hidden>
+  <div class="card-h"><h2>Enable 2FA — Scan this QR code</h2></div>
+  <div style="padding:20px">
+    <ol class="muted small" style="margin-top:0">
+      <li>Open your authenticator app and tap "+ Add account".</li>
+      <li>Scan the QR code below (or type the secret manually).</li>
+      <li>Enter the 6-digit code your app displays to confirm.</li>
+    </ol>
+
+    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin-top:12px">
+      <div id="mfa-qr"
+           style="background:#fff;padding:12px;border:1px solid var(--border);
+                  border-radius:8px;width:200px;height:200px;display:grid;place-items:center">
+        <span class="muted small">QR…</span>
+      </div>
+      <div style="flex:1;min-width:240px">
+        <p class="small" style="margin:0 0 6px"><strong>Manual entry</strong></p>
+        <p class="small" style="margin:0 0 4px">Account: <code id="mfa-account">—</code></p>
+        <p class="small" style="margin:0 0 4px">Issuer: <code id="mfa-issuer">VAPT Reporter</code></p>
+        <p class="small" style="margin:0 0 4px">
+          Secret:
+          <code id="mfa-secret" style="word-break:break-all;user-select:all">—</code>
+        </p>
+        <p class="muted small" style="margin:8px 0 0">Period 30s · 6 digits · SHA-1</p>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+      <label>
+        Enter the 6-digit code from your app
+        <input id="mfa-verify-code" type="text" inputmode="numeric" maxlength="6"
+               autocomplete="one-time-code" placeholder="123456"
+               style="font-family:ui-monospace,monospace;letter-spacing:0.2em;
+                      font-size:18px;max-width:160px">
+      </label>
+      <div class="actions" style="margin-top:12px">
+        <button id="mfa-verify-btn" class="btn-primary">Verify &amp; enable</button>
+        <button id="mfa-enroll-cancel" class="btn-secondary">Cancel</button>
+      </div>
+      <p id="mfa-verify-msg" class="small" style="margin:8px 0 0;min-height:1.4em"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ====== Backup codes panel (one-time display) ====== -->
+<div id="mfa-backup-codes" class="card" style="max-width:680px;margin:24px 0" hidden>
+  <div class="card-h"><h2>Save your backup codes</h2></div>
+  <div style="padding:20px">
+    <div style="background:var(--warn-bg);color:var(--warn-fg);
+                padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:12px">
+      ⚠ These codes are shown <strong>once only</strong>.
+      Save them somewhere safe (password manager). Each can be used once if you
+      lose access to your authenticator.
+    </div>
+    <pre id="mfa-codes-list"
+         style="background:var(--surface-2);padding:14px;border-radius:8px;
+                font-family:ui-monospace,monospace;font-size:14px;
+                line-height:1.8;border:1px solid var(--border)"></pre>
+    <div class="actions" style="margin-top:12px">
+      <button id="mfa-codes-copy" class="btn-secondary" type="button">📋 Copy all</button>
+      <button id="mfa-codes-download" class="btn-secondary" type="button">💾 Download .txt</button>
+      <button id="mfa-codes-done" class="btn-primary" type="button">I've saved them</button>
+    </div>
+  </div>
+</div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+function escapeHtml(s){
+  return String(s==null?"":s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+(function(){
+  const $ = (s) => document.querySelector(s);
+
+  // Forced-enrollment mode — when the auth gate redirects the user
+  // here, the URL carries `?forced=1`. We show the banner, hide the
+  // "back to profile" link (they can't reach /profile yet), and
+  // after a successful enrollment we redirect them on to
+  // /dashboard so they don't have to figure out the navigation.
+  const FORCED = new URLSearchParams(location.search).get("forced") === "1";
+  if (FORCED){
+    const banner = document.getElementById("mfa-forced-banner");
+    if (banner) banner.hidden = false;
+    const back = document.getElementById("mfa-back-link");
+    if (back) back.style.display = "none";
+  }
+
+  async function api(path, opts){
+    const r = await fetch(path, { credentials:"include", ...(opts||{}) });
+    let body = null;
+    try { body = await r.json(); } catch(_) {}
+    if (!r.ok) throw new Error((body && body.detail) || r.statusText);
+    return body;
+  }
+
+  function renderStatus(s){
+    const host = $("#mfa-status");
+    const enabled = !!s.totp_enabled;
+    const bc = s.backup_codes || {total:0, unused:0, used:0};
+    if (enabled){
+      const enrolledAt = s.totp_enabled_at ? new Date(s.totp_enabled_at).toLocaleString() : "—";
+      host.innerHTML = `
+        <p><strong>Status:</strong>
+          <span class="badge badge-success" style="background:var(--ok-bg);color:var(--ok-fg);
+                padding:2px 8px;border-radius:6px">✓ Enabled</span></p>
+        <p class="small muted" style="margin:0">Enrolled ${enrolledAt}</p>
+        <p class="small" style="margin-top:10px">
+          Backup codes:
+          <strong>${bc.unused}</strong> unused of <strong>${bc.total}</strong>
+          (${bc.used} consumed)
+        </p>
+        ${bc.unused === 0 && bc.total > 0
+            ? '<p class="small" style="color:var(--err-fg)">⚠ All backup codes used. Disable and re-enroll to regenerate.</p>'
+            : ''}
+        <div class="actions" style="margin-top:14px">
+          <button id="mfa-disable-btn" class="btn-danger">Disable 2FA</button>
+        </div>
+        <p id="mfa-disable-msg" class="small" style="margin:8px 0 0;min-height:1.4em"></p>
+      `;
+      $("#mfa-disable-btn").addEventListener("click", onDisable);
+    } else {
+      host.innerHTML = `
+        <p><strong>Status:</strong>
+          <span class="badge" style="background:var(--info-bg);color:var(--info-fg);
+                padding:2px 8px;border-radius:6px">Not enabled</span></p>
+        <div class="actions" style="margin-top:14px">
+          <button id="mfa-enable-btn" class="btn-primary">Enable 2FA</button>
+        </div>
+      `;
+      $("#mfa-enable-btn").addEventListener("click", onEnable);
+    }
+  }
+
+  async function loadStatus(){
+    try {
+      const s = await api("/api/twofa/status");
+      renderStatus(s);
+    } catch (e){
+      $("#mfa-status").innerHTML =
+        `<p style="color:var(--err-fg)">Failed to load status: ${escapeHtml(e.message)}</p>`;
+    }
+  }
+
+  async function onEnable(){
+    try {
+      const payload = await api("/api/twofa/enroll", { method:"POST" });
+      // payload.qr_svg is a full <svg> element string; inline it.
+      $("#mfa-qr").innerHTML = payload.qr_svg || "";
+      $("#mfa-qr svg") && $("#mfa-qr svg").setAttribute("style","width:176px;height:176px");
+      $("#mfa-secret").textContent = payload.secret || "";
+      $("#mfa-account").textContent = payload.account || "";
+      $("#mfa-issuer").textContent = payload.issuer || "VAPT Reporter";
+      $("#mfa-verify-code").value = "";
+      $("#mfa-verify-msg").textContent = "";
+      $("#mfa-enroll").hidden = false;
+      $("#mfa-verify-code").focus();
+    } catch (e){
+      alert("Failed to start enrollment: " + e.message);
+    }
+  }
+
+  $("#mfa-enroll-cancel").addEventListener("click", () => {
+    if (!confirm("Cancel enrollment? The unverified secret will remain on your account until you complete or re-enroll.")) return;
+    $("#mfa-enroll").hidden = true;
+  });
+
+  $("#mfa-verify-btn").addEventListener("click", async () => {
+    const code = ($("#mfa-verify-code").value || "").trim();
+    if (!/^\d{6}$/.test(code)){
+      $("#mfa-verify-msg").textContent = "Enter the 6 digit code.";
+      $("#mfa-verify-msg").style.color = "var(--err-fg)";
+      return;
+    }
+    $("#mfa-verify-msg").textContent = "Verifying…";
+    $("#mfa-verify-msg").style.color = "var(--text-2)";
+    try {
+      const r = await api("/api/twofa/enroll/verify", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ code }),
+      });
+      // success: surface backup codes
+      $("#mfa-enroll").hidden = true;
+      $("#mfa-codes-list").textContent = (r.backup_codes || []).join("\n");
+      $("#mfa-backup-codes").hidden = false;
+      // refresh the status panel underneath
+      await loadStatus();
+    } catch (e){
+      $("#mfa-verify-msg").textContent = e.message;
+      $("#mfa-verify-msg").style.color = "var(--err-fg)";
+    }
+  });
+
+  // Allow Enter in the code field to submit
+  $("#mfa-verify-code").addEventListener("keydown", (e) => {
+    if (e.key === "Enter"){ e.preventDefault(); $("#mfa-verify-btn").click(); }
+  });
+
+  $("#mfa-codes-copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("#mfa-codes-list").textContent);
+      $("#mfa-codes-copy").textContent = "✓ Copied";
+      setTimeout(() => { $("#mfa-codes-copy").textContent = "📋 Copy all"; }, 1500);
+    } catch(_) {
+      alert("Copy failed — please select the codes manually.");
+    }
+  });
+
+  $("#mfa-codes-download").addEventListener("click", () => {
+    const blob = new Blob(
+      ["VAPT Reporter — 2FA backup codes\n",
+       "Each code can be used ONCE to log in if you lose your authenticator.\n\n",
+       $("#mfa-codes-list").textContent, "\n"],
+      { type: "text/plain" }
+    );
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "vapt-2fa-backup-codes.txt";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  });
+
+  $("#mfa-codes-done").addEventListener("click", () => {
+    $("#mfa-backup-codes").hidden = true;
+    // If we got here through forced enrollment, the gate is now lifted
+    // (totp_enabled=True on the server). Send the user to the dashboard
+    // so they don't have to figure out how to navigate away from a
+    // page that until five seconds ago was their entire world.
+    if (FORCED){
+      window.location.href = "/dashboard";
+    }
+  });
+
+  async function onDisable(){
+    if (!confirm(
+      "Disable 2FA?\n\n" +
+      "After disabling, your account will require only username + password to sign in. " +
+      "Your authenticator secret and all unused backup codes will be deleted."
+    )) return;
+    const msg = $("#mfa-disable-msg");
+    msg.textContent = "Disabling…";
+    try {
+      await api("/api/twofa", { method:"DELETE" });
+      msg.textContent = "";
+      await loadStatus();
+    } catch (e){
+      msg.textContent = "Failed: " + e.message;
+      msg.style.color = "var(--err-fg)";
+    }
+  }
+
+  loadStatus();
+})();
+</script>
+{% endblock %}

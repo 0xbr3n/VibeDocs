@@ -1,0 +1,56 @@
+# Keep the Docker build context (and the resulting image) lean and free of
+# secrets / local junk. Only what the Dockerfile COPYs is needed:
+#   backend/requirements.txt, backend/app, backend/word_templates, report-templates
+
+# Secrets & local env
+.env
+.env.standalone
+
+# Version control history (huge, never needed at build time)
+.git
+.gitignore
+
+# Python caches
+**/__pycache__
+**/*.pyc
+*.egg-info
+
+# Local runtime data (mounted as volumes, never baked in)
+data
+uploads
+reports
+
+# Editor / OS cruft
+.vscode
+.idea
+.DS_Store
+*.log
+
+# Internal-only material that shouldn't ship inside a client/friend image
+backend/app/changes
+backend/app/userguide
+backend/app/main.py.backup
+**/*.changes-*.md
+
+# Template backups / superseded variants — only the canonical *_template.docx
+# (and the hashed custom uploads) are needed at runtime. These .pre-* / .bak
+# snapshots just bloat the image.
+**/*.pre-*.docx
+**/*.pre-*.xlsx
+**/*.prev-*.xlsx
+**/*.bak
+**/*.backup
+**/*.before_*
+
+# Dev-only stack & helpers not used by the standalone build
+docker-compose.yml
+nginx
+DEPLOY_LINUX.sh
+DEPLOY_LINUX_MANUAL.sh
+DEPLOY_WINDOWS.cmd
+DIAGNOSE_WINDOWS.cmd
+patch_confid_pgbreak.py
+probe_pgnum.py
+va_pipeline_standalone.py
+docs
+seed_data

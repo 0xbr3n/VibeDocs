@@ -1,0 +1,450 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block body_class %}is-wide{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Dashboard</h1>
+  <div class="actions">
+    <button type="button" class="btn-secondary" id="dash-customize-btn"
+            title="Choose which tiles appear on your dashboard">⚙ Customize</button>
+    <a class="btn-primary" href="/projects/new">+ New project</a>
+  </div>
+</div>
+
+{# ---- Customize panel: per-user widget selection. Persists to
+   PATCH /api/auth/me/preferences {dashboard_widgets:[...]}. Hidden by
+   default; toggled by the ⚙ Customize button. ---- #}
+<section id="dash-customize" class="card" hidden
+         style="margin-bottom:18px">
+  <header class="card-h">
+    <h2>Customize your dashboard</h2>
+    <span class="muted small">Pick the tiles you want to see</span>
+  </header>
+  <div style="padding:14px 16px;display:flex;flex-wrap:wrap;gap:14px">
+    {% for key, label in widget_catalog %}
+    <label style="display:flex;align-items:center;gap:7px;font-size:13px;
+                   padding:6px 10px;border:1px solid var(--border);
+                   border-radius:8px;background:var(--surface-2);cursor:pointer">
+      <input type="checkbox" class="dash-widget-toggle" value="{{ key }}"
+             {% if key in enabled_widgets %}checked{% endif %}>
+      {{ label }}
+    </label>
+    {% endfor %}
+  </div>
+  <div style="padding:0 16px 16px;display:flex;gap:8px;align-items:center">
+    <button type="button" class="btn-primary btn-sm" id="dash-widgets-save">Save layout</button>
+    <button type="button" class="btn-secondary btn-sm" id="dash-widgets-reset">Reset to default (all)</button>
+    <span id="dash-widgets-msg" class="small muted" aria-live="polite"></span>
+  </div>
+</section>
+
+{# ============================================================
+   Personal infographic — server-rendered numbers fade-counted in
+   via JS, with a single SVG bar chart breaking down report status.
+   The whole component reads its colours from CSS custom properties
+   (--accent, --accent-dark, --surface-2, --border, --text, --text-2)
+   so it auto-recolours when the user picks a different UI theme —
+   light, dark, midnight, dracula, solarized — without re-rendering.
+   ============================================================ #}
+<section id="dash-infographic" class="card dash-info"
+         data-stats='{{ stats | tojson }}'
+         aria-label="Personal activity summary">
+  <header class="card-h">
+    <h2>Your activity at a glance</h2>
+    <span class="muted small">Live — recomputes on every page load</span>
+  </header>
+  {# Tiles render only when their key is in `enabled_widgets`. The
+     whole section hides if the user disabled every tile (the chart is
+     a separate widget key below). #}
+  <div class="dash-info-grid">
+    {% if "reports_owned" in enabled_widgets %}
+    <div class="stat-tile" data-tile="reports-owned">
+      <svg class="tile-glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 4h11l3 3v13H5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M9 11h6M9 14h6M9 17h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <div class="tile-num" data-target="{{ stats.reports_owned }}">0</div>
+      <div class="tile-label">Reports you own</div>
+      <div class="tile-sub muted small">{{ stats.reports_in_flight }} still in flight</div>
+    </div>
+    {% endif %}
+
+    {% if "reports_completed" in enabled_widgets %}
+    <div class="stat-tile" data-tile="reports-completed">
+      <svg class="tile-glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M8 12.5l2.5 2.5L16 9.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="tile-num" data-target="{{ stats.reports_completed }}">0</div>
+      <div class="tile-label">Reports completed</div>
+      <div class="tile-sub muted small">Approved or published</div>
+    </div>
+    {% endif %}
+
+    {% if "reports_assigned" in enabled_widgets %}
+    <div class="stat-tile" data-tile="reports-assigned">
+      <svg class="tile-glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M8 9h8M8 13h8M8 17h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <div class="tile-num" data-target="{{ stats.reports_assigned }}">0</div>
+      <div class="tile-label">Reports assigned to you</div>
+      <div class="tile-sub muted small">You're the named reviewer</div>
+    </div>
+    {% endif %}
+
+    {# Pending-reviews tile is meaningless in single-user local mode. #}
+    {% if "pending_reviews" in enabled_widgets and not user.is_local %}
+    <div class="stat-tile" data-tile="pending-reviews"
+         style="cursor:pointer" onclick="window.location='/reviews'"
+         title="Open the Reviews page">
+      <svg class="tile-glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M12 7v5l3.5 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="tile-num" data-target="{{ stats.pending_reviews }}">0</div>
+      <div class="tile-label">Pending reviews</div>
+      <div class="tile-sub muted small">
+        {% if stats.is_reviewer_role %}{{ stats.team_pending_reviews }} in the team queue · {% endif %}waiting on you →
+      </div>
+    </div>
+    {% endif %}
+
+    {% if "findings_authored" in enabled_widgets %}
+    <div class="stat-tile" data-tile="findings">
+      <svg class="tile-glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M15 15l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M10.5 7.5v6M7.5 10.5h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <div class="tile-num" data-target="{{ stats.findings_authored }}">0</div>
+      <div class="tile-label">Findings authored</div>
+      <div class="tile-sub muted small">Contributions to the team library</div>
+    </div>
+    {% endif %}
+
+    {% if "projects_visible" in enabled_widgets %}
+    <div class="stat-tile" data-tile="projects">
+      <svg class="tile-glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 7h6l2 2h8v9H4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      </svg>
+      <div class="tile-num" data-target="{{ stats.projects_visible }}">0</div>
+      <div class="tile-label">Projects</div>
+      <div class="tile-sub muted small">Visible to you</div>
+    </div>
+    {% endif %}
+
+    {% if "unique_clients" in enabled_widgets %}
+    <div class="stat-tile" data-tile="clients">
+      <svg class="tile-glyph" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="9" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M3 19c0-3 3-5 6-5s6 2 6 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        <circle cx="17" cy="8" r="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M15 19c0-2.2 1.8-4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <div class="tile-num" data-target="{{ stats.unique_clients }}">0</div>
+      <div class="tile-label">Unique clients</div>
+      <div class="tile-sub muted small">Across {{ stats.projects_visible }} project{% if stats.projects_visible != 1 %}s{% endif %}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if "status_breakdown" in enabled_widgets %}
+  {# Animated horizontal stacked-bar — visualises the report-status
+     breakdown using the same CSS variables every other status pill on
+     the site uses. Total bar width animates in from 0 to 100%. #}
+  <div class="dash-info-chart" aria-label="Report status breakdown">
+    <div class="chart-label">
+      <span class="small muted">Report status breakdown · {{ stats.reports_visible }} total</span>
+      <span class="chart-legend"></span>
+    </div>
+    {% if stats.reports_visible > 0 %}
+    <div class="stacked-bar" role="img"
+         aria-label="{{ stats.reports_in_flight }} in flight, {{ stats.reports_completed }} completed, {{ stats.status_breakdown.rejected }} rejected">
+      {# Server-computed percentages so first paint already shows the
+         shape; JS only adds the animated grow-in effect. #}
+      {% set total = stats.reports_visible %}
+      {% set p_draft = (stats.status_breakdown.draft / total * 100)|round(1) %}
+      {% set p_in_review = (stats.status_breakdown.in_review / total * 100)|round(1) %}
+      {% set p_approved = (stats.status_breakdown.approved / total * 100)|round(1) %}
+      {% set p_published = (stats.status_breakdown.published / total * 100)|round(1) %}
+      {% set p_rejected = (stats.status_breakdown.rejected / total * 100)|round(1) %}
+      {% if p_draft %}<span class="bar-seg seg-draft"     style="width:{{ p_draft }}%"      title="Draft: {{ stats.status_breakdown.draft }}"></span>{% endif %}
+      {% if p_in_review %}<span class="bar-seg seg-in_review" style="width:{{ p_in_review }}%"  title="In review: {{ stats.status_breakdown.in_review }}"></span>{% endif %}
+      {% if p_approved %}<span class="bar-seg seg-approved"  style="width:{{ p_approved }}%"   title="Approved: {{ stats.status_breakdown.approved }}"></span>{% endif %}
+      {% if p_published %}<span class="bar-seg seg-published" style="width:{{ p_published }}%"  title="Published: {{ stats.status_breakdown.published }}"></span>{% endif %}
+      {% if p_rejected %}<span class="bar-seg seg-rejected"  style="width:{{ p_rejected }}%"   title="Rejected: {{ stats.status_breakdown.rejected }}"></span>{% endif %}
+    </div>
+    <div class="chart-key small muted">
+      {% if stats.status_breakdown.draft %}<span class="key-dot dot-draft"></span> Draft · {{ stats.status_breakdown.draft }}{% endif %}
+      {% if stats.status_breakdown.in_review %}<span class="key-dot dot-in_review"></span> In review · {{ stats.status_breakdown.in_review }}{% endif %}
+      {% if stats.status_breakdown.approved %}<span class="key-dot dot-approved"></span> Approved · {{ stats.status_breakdown.approved }}{% endif %}
+      {% if stats.status_breakdown.published %}<span class="key-dot dot-published"></span> Published · {{ stats.status_breakdown.published }}{% endif %}
+      {% if stats.status_breakdown.rejected %}<span class="key-dot dot-rejected"></span> Rejected · {{ stats.status_breakdown.rejected }}{% endif %}
+    </div>
+    {% else %}
+    <p class="empty">No reports yet — create a project, then a report from it.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <header class="card-h">
+      <h2>Recent projects</h2>
+      <a href="/projects">All projects →</a>
+    </header>
+    {% if projects %}
+      <table class="data">
+        <thead><tr><th>Name</th><th>Client</th><th>Status</th><th>Created</th></tr></thead>
+        <tbody>
+          {% for p in projects %}
+          <tr>
+            <td><a href="/projects/{{ p.id }}">{{ p.name }}</a></td>
+            <td>{{ p.client_name }}</td>
+            <td><span class="status status-{{ p.status }}">{{ p.status }}</span></td>
+            <td class="muted">{{ p.created_at.strftime("%Y-%m-%d") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty">No projects yet. <a href="/projects/new">Create your first one</a>.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <header class="card-h">
+      <h2>Recent reports</h2>
+    </header>
+    {% if reports %}
+      <table class="data">
+        <thead><tr><th>Name</th><th>Version</th><th>Project</th></tr></thead>
+        <tbody>
+          {% for r in reports %}
+          <tr>
+            <td><a href="/reports/{{ r.id }}">{{ r.name }}</a></td>
+            <td><code>v{{ r.current_version }}</code></td>
+            <td><a href="/projects/{{ r.project_id }}">{{ r.project.name }}</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty">No reports yet.</p>
+    {% endif %}
+  </section>
+</div>
+
+<style>
+/* ============================================================
+   Dashboard infographic — theme-reactive via CSS variables.
+   Every colour here is sourced from the page's `:root` palette
+   (which `data-theme` rewrites on switch), so no JS needs to run
+   when the user flips themes — the chart recolours instantly.
+   ============================================================ */
+.dash-info{ margin-bottom:18px; }
+.dash-info-grid{
+  display:grid; grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:14px; padding:14px 16px 6px;
+}
+@media (max-width: 1000px){
+  .dash-info-grid{ grid-template-columns:repeat(2, minmax(0,1fr)); }
+}
+@media (max-width: 560px){
+  .dash-info-grid{ grid-template-columns:1fr; }
+}
+
+.stat-tile{
+  position:relative;
+  padding:18px 16px 14px;
+  border-radius:12px;
+  background:linear-gradient(135deg,
+              color-mix(in oklab, var(--accent-soft, var(--surface-2)) 60%, var(--surface) 40%),
+              var(--surface-2));
+  border:1px solid var(--border);
+  overflow:hidden;
+  /* Gentle fade-in on first paint. Staggering via nth-child gives the
+     row a sequenced reveal that doesn't feel synchronous. */
+  opacity:0; transform:translateY(6px);
+  animation: tileIn .55s ease-out forwards;
+}
+.stat-tile:nth-child(1){ animation-delay:.02s; }
+.stat-tile:nth-child(2){ animation-delay:.08s; }
+.stat-tile:nth-child(3){ animation-delay:.14s; }
+.stat-tile:nth-child(4){ animation-delay:.20s; }
+@keyframes tileIn{ to { opacity:1; transform:translateY(0); } }
+
+.tile-glyph{
+  position:absolute; right:10px; top:10px; width:36px; height:36px;
+  color:var(--accent-dark);
+  opacity:.35; transition: color .2s, opacity .2s, transform .2s;
+}
+.stat-tile:hover .tile-glyph{ opacity:.55; transform:scale(1.05); }
+
+.tile-num{
+  font-size:32px; font-weight:700; line-height:1;
+  color:var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing:-.01em;
+}
+.tile-label{
+  margin-top:6px; font-size:13px; font-weight:600; color:var(--text);
+}
+.tile-sub{ margin-top:2px; font-size:11.5px; }
+
+/* A subtle accent stripe at the bottom of each tile — picks up the
+   theme accent automatically. */
+.stat-tile::after{
+  content:""; position:absolute; left:0; right:0; bottom:0; height:3px;
+  background:linear-gradient(90deg,
+              var(--accent) 0%, var(--accent-dark) 50%, var(--accent) 100%);
+  opacity:.85;
+}
+
+/* ---- Stacked bar chart ---- */
+.dash-info-chart{ padding:6px 16px 16px; }
+.chart-label{
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:6px;
+}
+.stacked-bar{
+  position:relative;
+  height:18px; border-radius:9px; overflow:hidden;
+  background:var(--surface-3);
+  border:1px solid var(--border);
+  display:flex;
+}
+.bar-seg{
+  height:100%; display:block;
+  /* Grow-in from 0% to the server-computed width. The `--target-w`
+     trick wouldn't work cleanly with Jinja-injected width, so we keyframe
+     a simple width tween from 0. The CSS variable trick below
+     would inflate the markup; this keyframe is simpler. */
+  animation: barGrow .9s ease-out both;
+  animation-delay:.18s;
+  transform-origin:left;
+}
+@keyframes barGrow{
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.seg-draft     { background:var(--surface-3); border-right:1px solid var(--border); }
+.seg-in_review { background:var(--medium-bg); }
+.seg-approved  { background:var(--ok-bg); }
+.seg-published { background:var(--info-bg); }
+.seg-rejected  { background:var(--err-bg); }
+
+.chart-key{ margin-top:8px; display:flex; gap:14px; flex-wrap:wrap; }
+.key-dot{
+  display:inline-block; width:10px; height:10px; border-radius:50%;
+  margin-right:4px; vertical-align:-1px;
+  border:1px solid var(--border);
+}
+.key-dot.dot-draft     { background:var(--surface-3); }
+.key-dot.dot-in_review { background:var(--medium-bg); }
+.key-dot.dot-approved  { background:var(--ok-bg); }
+.key-dot.dot-published { background:var(--info-bg); }
+.key-dot.dot-rejected  { background:var(--err-bg); }
+
+/* Reduced-motion mode — instant, no animation. Accessibility first. */
+@media (prefers-reduced-motion: reduce){
+  .stat-tile, .bar-seg{ animation: none; opacity:1; transform:none; }
+}
+</style>
+
+<script nonce="{{ request.state.csp_nonce }}">
+// ============================================================
+// Counter animation. Replaces each .tile-num's placeholder "0" with
+// a smooth count-up to its data-target value. Uses requestAnimationFrame
+// so the easing curve stays butter-smooth, with a small enough total
+// frame budget (~600ms) that it never feels laggy.
+// ============================================================
+(function animateInfographicCounters(){
+  // Honour the OS-level "reduce motion" preference — accessibility.
+  const noMotion = window.matchMedia &&
+                   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+
+  const tiles = document.querySelectorAll('#dash-infographic .tile-num');
+  tiles.forEach(el => {
+    const target = parseInt(el.dataset.target || '0', 10) || 0;
+    if (noMotion || target === 0){
+      el.textContent = target.toString();
+      return;
+    }
+    const duration = 600 + Math.min(target, 40) * 6;   // bigger targets take a touch longer
+    const start = performance.now();
+    function tick(now){
+      const t = Math.min(1, (now - start) / duration);
+      const v = Math.round(easeOut(t) * target);
+      el.textContent = v.toString();
+      if (t < 1) requestAnimationFrame(tick);
+      else el.textContent = target.toString();   // pin final value exactly
+    }
+    requestAnimationFrame(tick);
+  });
+})();
+
+// Theme switches recolour the infographic FOR FREE because every
+// colour is referenced through a CSS custom property whose value the
+// theme switcher rewrites on the <html> element. No JS is needed to
+// re-render — the browser repaints the affected nodes the next frame.
+// We keep this comment here as documentation, not code.
+
+// ============================================================
+// Dashboard customize panel. Toggles which stat tiles render. The
+// selection persists to PATCH /api/auth/me/preferences
+// {dashboard_widgets:[...]}; the page reloads so the server re-renders
+// exactly the chosen tiles (single source of truth — no client-side
+// show/hide drift).
+// ============================================================
+(function dashCustomize(){
+  const btn   = document.getElementById('dash-customize-btn');
+  const panel = document.getElementById('dash-customize');
+  const save  = document.getElementById('dash-widgets-save');
+  const reset = document.getElementById('dash-widgets-reset');
+  const msg   = document.getElementById('dash-widgets-msg');
+  if (!btn || !panel) return;
+
+  btn.addEventListener('click', () => {
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+  });
+
+  async function persist(widgets){
+    if (msg){ msg.textContent = 'Saving…'; msg.style.color = ''; }
+    try {
+      const r = await fetch('/api/auth/me/preferences', {
+        method:'PATCH', credentials:'include',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ dashboard_widgets: widgets }),
+      });
+      if (!r.ok){
+        let d = r.statusText;
+        try { d = (await r.json()).detail || d; } catch(_){}
+        throw new Error(d);
+      }
+      if (msg){ msg.textContent = 'Saved — reloading…'; msg.style.color = 'var(--ok-fg)'; }
+      // Reload so the server re-renders the exact tile set.
+      setTimeout(() => window.location.reload(), 450);
+    } catch (e){
+      if (msg){ msg.textContent = 'Save failed: ' + e.message; msg.style.color = 'var(--err-fg)'; }
+    }
+  }
+
+  if (save) save.addEventListener('click', () => {
+    const widgets = Array.from(
+      document.querySelectorAll('.dash-widget-toggle:checked')
+    ).map(c => c.value);
+    persist(widgets);
+  });
+
+  if (reset) reset.addEventListener('click', () => {
+    // Sentinel resets the server back to default-all (stored as NULL).
+    persist('__default__');
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Tester Name - VibeDocs{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Reporter Details</h1>
+    <p class="page-sub">Your name, email and contact number for the assessment reports</p>
+  </div>
+  <div class="actions">
+    <a href="/dashboard" class="btn-secondary">← Back to Dashboard</a>
+  </div>
+</div>
+
+<form id="tester-name-form" class="card" style="margin-top:20px;max-width:560px">
+  <div class="card-h"><h2>Your name</h2></div>
+  <div style="padding:20px;display:grid;gap:14px">
+    <p class="small muted" style="margin:0">
+      This name is automatically used as the <strong>tester name</strong> on every
+      Word report you generate. You can still override it per report on the
+      report's Details tab.
+    </p>
+    <label>
+      Tester name
+      <input id="tn" name="full_name" type="text"
+             value="{{ user.full_name or '' }}"
+             placeholder="e.g. Jane Tan" maxlength="255" autofocus>
+    </label>
+    <label>
+      Email
+      <input id="te" name="email" type="email"
+             value="{{ user.email or '' }}"
+             placeholder="e.g. jane.tan@example.com" maxlength="255">
+    </label>
+    <label>
+      Contact number
+      <input id="tp" name="phone" type="text"
+             value="{{ user.phone or '' }}"
+             placeholder="e.g. +65 9123 4567" maxlength="64">
+    </label>
+    <p class="small muted" style="margin:0">
+      Your name, email and contact number auto-fill the <strong>DT Tester</strong>
+      row of the tracker's Info sheet on every export.
+    </p>
+    <div class="actions" style="margin-top:4px">
+      <button type="submit" class="btn-primary" id="tn-save">Save</button>
+    </div>
+    <p id="tn-status" class="small" style="margin:4px 0 0"></p>
+  </div>
+</form>
+
+<script nonce="{{ request.state.csp_nonce }}">
+document.getElementById("tester-name-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("tn-save");
+  const status = document.getElementById("tn-status");
+  const name = document.getElementById("tn").value.trim();
+  const email = document.getElementById("te").value.trim();
+  const phone = document.getElementById("tp").value.trim();
+  btn.disabled = true; btn.textContent = "Saving...";
+  status.style.color = "var(--text-2)"; status.textContent = "Saving…";
+  try {
+    const payload = { full_name: name, phone: phone };
+    if (email) payload.email = email;
+    const r = await fetch("/api/auth/me/profile", {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload),
+      credentials: "include",
+    });
+    if (r.ok) {
+      status.style.color = "var(--accent-dark)";
+      status.textContent = "✓ Saved. Your details will be used on new reports.";
+      // Refresh so the top-right name badge updates immediately.
+      setTimeout(() => { window.location = "/dashboard"; }, 900);
+    } else {
+      let detail = r.status;
+      try { detail = (await r.json()).detail || detail; } catch (_) {}
+      status.style.color = "var(--err-fg, #ef4444)";
+      status.textContent = "✗ " + detail;
+      btn.disabled = false; btn.textContent = "Save";
+    }
+  } catch (err) {
+    status.style.color = "var(--err-fg, #ef4444)";
+    status.textContent = "✗ " + err.message;
+    btn.disabled = false; btn.textContent = "Save";
+  }
+});
+</script>
+{% endblock %}

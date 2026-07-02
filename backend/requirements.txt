@@ -1,0 +1,50 @@
+fastapi==0.115.4
+uvicorn[standard]==0.32.0
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+alembic==1.13.3
+pydantic==2.9.2
+pydantic-settings==2.6.1
+python-multipart==0.0.12
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+jinja2==3.1.4
+docxtpl==0.18.0
+python-docx==1.1.2
+pandas==2.2.3
+openpyxl==3.1.5
+PyYAML==6.0.2
+itsdangerous==2.2.0
+aiofiles==24.1.0
+httpx==0.27.2
+email-validator==2.2.0
+# 2FA (TOTP) -- compatible with Google Authenticator, Microsoft Authenticator,
+# Authy, 1Password, FreeOTP, and every other RFC 6238 implementation.
+pyotp==2.9.0
+# QR code generation for enrollment (segno is pure-python, no native deps)
+segno==1.6.1
+# HTML sanitizer for the rich-text finding fields. Anchors XSS/HTML injection
+# protection: caller HTML -> bleach.clean -> stored. Used before render.
+bleach==6.1.0
+# Pure-python PDF text extraction for the PO/RFI engagement-document upload.
+pypdf==4.3.1
+# PDF generation for the DRAFT watermark overlay stamped on preview / draft
+# PDFs. The in-DOCX VML watermark is unreliable through LibreOffice, so we
+# composite a separate single-page watermark PDF over the converted output.
+reportlab==4.2.5
+# AES-encrypted ZIP for password-protected report bundles. Drop-in replacement
+# for stdlib zipfile with WZ_AES (AES-256) support. Pure Python.
+pyzipper==0.3.6
+# ---- VA-Recurring toolkit (consultant utility) ----
+# CVSS 3.1 / 4.0 scoring used by the bulk-reassessment step of the
+# va_automater library that ships under services/tools/va_automater/.
+cvss==3.4
+# pdfplumber backs the risk-accept PDF ingestion path in the VA-Recurring
+# tool — management often hands over the previous quarter's accepted
+# findings as a printed PDF rather than a CSV/XLSX.
+pdfplumber==0.11.4
+# Safer XML parsing — guards against billion-laughs (entity expansion) and
+# XXE (external entity injection) in user-uploaded Nmap XML and knowledge-base
+# XML files. Replaces stdlib xml.etree.ElementTree in the two XML parsers.
+defusedxml==0.7.1

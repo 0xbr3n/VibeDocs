@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}Reports - VAPT Reporter{% endblock %}
+{% block body_class %}is-wide{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Reports</h1>
+    <p class="page-sub">Everything you can see across all projects</p>
+  </div>
+  <div class="actions">
+    <input id="report-filter" type="search" placeholder="Filter by name, client, owner…"
+           style="min-width:280px">
+    <select id="status-filter">
+      <option value="">All statuses</option>
+      <option value="draft">Draft</option>
+      <option value="in_review">In Review</option>
+      <option value="approved">Approved</option>
+      <option value="rejected">Rejected</option>
+      <option value="published">Published</option>
+    </select>
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <table class="data" id="reports-table">
+    <thead>
+      <tr>
+        <th>Report</th>
+        <th>Project / Client</th>
+        <th>Template</th>
+        <th>Version</th>
+        <th>Owner</th>
+        <th>My access</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="reports-tbody">
+      {% for r in items %}
+      <tr data-name="{{ r.name|e }}" data-client="{{ r.client_name|e }}"
+          data-owner="{{ r.owner_username or '' }}" data-status="{{ r.review_status }}"
+          data-report-id="{{ r.id }}">
+        <td>
+          <strong>{{ r.name }}</strong>
+        </td>
+        <td>
+          <a href="/projects/{{ r.project_id }}" style="text-decoration:none">{{ r.project_name }}</a>
+          <div class="muted small">{{ r.client_name }}</div>
+        </td>
+        {# Template selector lives in its own column now (was previously
+           crammed under the report title, which made the report-name
+           row look noisy and unbalanced). Visible only to users with
+           edit / admin access; viewers see the plain template name.
+           Listing both master ReportTemplates AND every approved
+           (is_public) CustomTemplate, grouped under <optgroup>.
+           Value encoding:
+              "master:<id>"  -> change master template only
+              "custom:<id>"  -> keep the current master, set the
+                                custom-layout override to that id
+           The JS below POSTs to /api/reports/{rid}/template. #}
+        <td>
+          {% if r.my_access in ('edit', 'admin') %}
+          <select class="tpl-switcher" data-report-id="{{ r.id }}"
+                  data-current-master="{{ r.template_id }}"
+                  data-current-custom="{{ r.custom_template_id or '' }}"
+                  title="Change the report template (master or approved custom)">
+            <optgroup label="Master templates">
+              {% for t in master_templates %}
+              <option value="master:{{ t.id }}"
+                  {% if r.template_id == t.id and not r.custom_template_id %}selected{% endif %}>
+                {{ t.name }}
+              </option>
+              {% endfor %}
+            </optgroup>
+            {% if approved_customs %}
+            <optgroup label="Approved custom templates">
+              {% for c in approved_customs %}
+              <option value="custom:{{ c.id }}"
+                  {% if r.custom_template_id == c.id %}selected{% endif %}
+                  data-template-type="{{ c.template_type }}">
+                {{ c.name }} ({{ c.template_type }})
+              </option>
+              {% endfor %}
+            </optgroup>
+            {% endif %}
+          </select>
+          {% else %}
+          <span class="muted small">{{ r.template_name }}</span>
+          {% endif %}
+        </td>
+        <td><span class="tpl-pill">v{{ r.current_version }}</span></td>
+        <td>
+          {# Wrap in .owner-cell so the inline-styling override below
+             becomes a flex container — keeps the owner name + "you"
+             chip visually centered against the row's taller siblings
+             (the template-switcher dropdown). #}
+          <div class="owner-cell">
+            <strong>{{ r.owner_full_name or r.owner_username or '—' }}</strong>
+            {% if r.is_mine %}<span class="tpl-pill"
+                style="background:var(--accent-soft);color:var(--accent-dark)">you</span>{% endif %}
+          </div>
+        </td>
+        <td><span class="badge access-{{ r.my_access }}">{{ r.my_access }}</span></td>
+        <td><span class="badge status-{{ r.review_status }}">{{ r.review_status|replace('_',' ') }}</span></td>
+        <td><a class="btn-secondary btn-sm" href="/reports/{{ r.id }}">Open →</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if not items %}
+  <p class="muted" style="padding:18px;text-align:center">
+    You don't have any reports yet. Create one from a
+    <a href="/projects">project page</a>.
+  </p>
+  {% endif %}
+</div>
+
+<style>
+/* ---- Vertical centering for every reports-table cell ----
+ * The global stylesheet has `table.data tbody td { vertical-align: top }`
+ * which made small pills (v0.1, ADMIN, DRAFT) sit at the top of rows
+ * that grew tall because of the template-switcher dropdown. Override
+ * to `middle` so every cell content is vertically centered against
+ * the tallest sibling in its row. The selector specificity matches
+ * the global rule (tbody td) so the override actually wins. */
+#reports-table tbody td{
+  vertical-align:middle;
+}
+/* Give every row a comfortable minimum height so even rows with only
+ * small pills don't shrink — the page looks consistent regardless of
+ * whether a row has a long template name or not. */
+#reports-table tbody tr{
+  height:64px;
+}
+/* Owner name + "you" chip read as a single vertically-centered cluster. */
+#reports-table .owner-cell{
+  display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+}
+
+/* ---- Bigger, more readable badges in this table only ----
+ * The default `.badge` is sized for compact rows on other pages
+ * (Findings library cards, status chips inside finding cards). On
+ * the Reports list each row is now ~64 px tall so we can afford to
+ * upsize the pills for legibility. Scoped to #reports-table so we
+ * don't inflate badges everywhere else. */
+#reports-table .badge,
+#reports-table .tpl-pill{
+  display:inline-block;
+  padding:6px 12px;
+  font-size:12.5px;
+  font-weight:600;
+  letter-spacing:.04em;
+  border-radius:999px;
+  line-height:1.2;
+  min-width:56px;
+  text-align:center;
+}
+/* Owner-row "you" pill is a secondary indicator — keep it slightly
+ * smaller so the username stays visually dominant. */
+#reports-table .owner-cell .tpl-pill{
+  padding:3px 8px;
+  font-size:10.5px;
+  min-width:0;
+}
+/* Slightly bolder owner name. */
+#reports-table .owner-cell strong{ font-size:14px; }
+
+/* Status chips for the reports list */
+.badge.status-draft     { background:var(--surface-3);   color:var(--text-2); border:1px solid var(--border); }
+.badge.status-in_review { background:var(--medium-bg);   color:var(--medium-fg); border:1px solid var(--medium-line); }
+.badge.status-approved  { background:var(--ok-bg);       color:var(--ok-fg);     border:1px solid var(--ok-line); }
+.badge.status-rejected  { background:var(--err-bg);      color:var(--err-fg);    border:1px solid #fecaca; }
+.badge.status-published { background:var(--info-bg);     color:var(--info-fg);   border:1px solid var(--info-line); }
+
+.badge.access-admin { background:var(--accent-soft); color:var(--accent-dark); border:1px solid var(--accent-line); }
+.badge.access-edit  { background:var(--info-bg);     color:var(--info-fg);     border:1px solid var(--info-line); }
+.badge.access-view  { background:var(--surface-3);   color:var(--text-2);      border:1px solid var(--border); }
+
+/* Template re-binder lives in its own column on the reports list.
+ * Full-column width so long template names don't truncate; subtle
+ * border until hovered so the table stays readable. */
+#reports-table th:nth-child(3),
+#reports-table td:nth-child(3) { min-width:220px; max-width:300px; }
+.tpl-switcher{
+  display:block; width:100%; box-sizing:border-box;
+  background:var(--card-bg, var(--surface)); color:var(--text);
+  border:1px solid var(--border); border-radius:5px;
+  padding:5px 8px; font-size:12px; line-height:1.4;
+  transition:border-color .12s, color .12s, background .12s;
+  cursor:pointer;
+  /* Trim long custom-template names so the cell stays a single line. */
+  text-overflow:ellipsis; white-space:nowrap; overflow:hidden;
+}
+.tpl-switcher:hover, .tpl-switcher:focus{
+  border-color:var(--accent-dark, var(--accent));
+  background:var(--surface-2);
+  outline:none;
+}
+.tpl-switcher:disabled{ opacity:.6; cursor:wait; }
+</style>
+
+<script nonce="{{ request.state.csp_nonce }}">
+const tbody = document.getElementById('reports-tbody');
+const filterInput = document.getElementById('report-filter');
+const statusFilter = document.getElementById('status-filter');
+function applyFilter(){
+  const q = (filterInput.value || '').toLowerCase();
+  const st = statusFilter.value;
+  for (const row of tbody.querySelectorAll('tr')){
+    const matchText = !q ||
+      (row.dataset.name||'').toLowerCase().includes(q) ||
+      (row.dataset.client||'').toLowerCase().includes(q) ||
+      (row.dataset.owner||'').toLowerCase().includes(q);
+    const matchStatus = !st || row.dataset.status === st;
+    row.style.display = (matchText && matchStatus) ? '' : 'none';
+  }
+}
+filterInput.addEventListener('input', applyFilter);
+statusFilter.addEventListener('change', applyFilter);
+
+// ============================================================
+// Inline template re-binder
+// ============================================================
+//
+// Each row's <select class="tpl-switcher"> encodes its options as
+// "master:<id>" or "custom:<id>". On change we POST to
+// /api/reports/{rid}/template with the right body shape and show a
+// tiny status indicator inline. The server enforces edit access
+// independently, so the picker is purely a UX affordance.
+async function handleTemplateChange(sel){
+  const rid = sel.dataset.reportId;
+  const raw = sel.value || '';
+  const [kind, idStr] = raw.split(':', 2);
+  const id = parseInt(idStr, 10);
+  if (!rid || !kind || !id){ return; }
+
+  let payload;
+  if (kind === 'master'){
+    // Pure master swap. Clear any old custom-template binding so the
+    // new master can render with its own native layout.
+    payload = { template_id: id, clear_custom: true };
+  } else {
+    // Custom-template override only — leave master untouched.
+    payload = { custom_template_id: id };
+  }
+
+  sel.disabled = true;
+  const prev = sel.dataset.lastValue || '';
+  try {
+    const r = await fetch(`/api/reports/${rid}/template`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok){
+      let detail = r.statusText;
+      try { detail = (await r.json()).detail || detail; } catch(_){}
+      throw new Error(detail);
+    }
+    sel.dataset.lastValue = sel.value;
+    // Optimistic visual feedback: a one-shot green flash on the row's
+    // first cell so the user knows the change took.
+    const tr = sel.closest('tr');
+    if (tr){
+      const cell = tr.querySelector('td');
+      if (cell){
+        cell.style.transition = 'background-color .8s ease';
+        cell.style.backgroundColor = 'rgba(124,92,252,.18)';
+        setTimeout(() => { cell.style.backgroundColor = ''; }, 900);
+      }
+    }
+  } catch (err){
+    alert('Couldn\'t change template: ' + (err.message || err));
+    // Revert the dropdown to the last known good value so the visible
+    // state matches what the server actually has.
+    if (prev) sel.value = prev;
+  } finally {
+    sel.disabled = false;
+  }
+}
+
+for (const sel of document.querySelectorAll('select.tpl-switcher')){
+  sel.dataset.lastValue = sel.value;
+  sel.addEventListener('change', () => handleTemplateChange(sel));
+}
+</script>
+{% endblock %}

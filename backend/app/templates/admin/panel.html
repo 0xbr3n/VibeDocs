@@ -1,0 +1,1267 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Admin Panel</h1>
+    <p class="page-sub">
+      Manage users, roles, and per-user permission overrides. Admin
+      role always has every permission — only non-admin users + role
+      defaults are editable here.
+    </p>
+  </div>
+</div>
+
+<div class="adm-tabs" role="tablist" style="margin-top:18px">
+  <button class="adm-tab active" data-pnl-tab="users" role="tab" aria-selected="true">
+    Users
+  </button>
+  <button class="adm-tab" data-pnl-tab="roles" role="tab">
+    Roles
+  </button>
+  <button class="adm-tab" data-pnl-tab="activity" role="tab">
+    Activity
+  </button>
+  <button class="adm-tab" data-pnl-tab="company-aliases" role="tab">
+    Company Aliases
+  </button>
+  <button class="adm-tab" data-pnl-tab="backup" role="tab">
+    Backup / Migrate
+  </button>
+</div>
+
+<!-- =====================================================================
+     TAB — Backup / Migrate (full VibeDocs export & import for VM swap)
+     ===================================================================== -->
+<section class="card pnl-pane is-hidden" id="pnl-pane-backup">
+  <header class="card-h"><h2>Backup &amp; Migrate</h2></header>
+  <div style="padding:0 16px 16px;display:grid;gap:18px;max-width:760px">
+    <div class="subcard">
+      <h3>Export everything</h3>
+      <p class="muted small">Download a single bundle containing every project,
+        report, version, finding, the library, templates, users and <strong>all
+        screenshots / evidence / generated files</strong>. Use this before
+        swapping to a new monthly Kali VM image.</p>
+      <a class="btn-primary" href="/api/admin/panel/export"
+         download>⬇ Download VibeDocs export bundle (.zip)</a>
+    </div>
+    <div class="subcard">
+      <h3>Import into this image</h3>
+      <p class="muted small" style="color:var(--err-fg,#ef4444)">
+        ⚠ <strong>Destructive.</strong> This wipes the current data and restores
+        the uploaded bundle (projects, reports, findings, assets). Run it on a
+        fresh image. Encrypted report passwords are <strong>not</strong> carried
+        across (different server key) — re-enter any you need afterwards.</p>
+      <form id="data-import-form" enctype="multipart/form-data">
+        <div class="form-row">
+          <label style="flex:1">Upload export bundle (.zip)
+            <input type="file" name="file" accept=".zip" required></label>
+          <button type="submit" class="btn-danger" style="margin-top:auto">⬆ Import &amp; restore</button>
+        </div>
+        <p id="data-import-msg" class="muted small" style="margin:8px 0 0"></p>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- =====================================================================
+     TAB — Users
+     ===================================================================== -->
+<section class="card pnl-pane" id="pnl-pane-users">
+  <header class="card-h">
+    <h2>Users</h2>
+    <div class="actions" style="gap:6px">
+      <button class="btn-primary btn-sm" id="pnl-new-user-btn">+ New user</button>
+      <span class="muted small" id="pnl-user-count" style="align-self:center">Loading…</span>
+    </div>
+  </header>
+  <div style="padding:0 16px 16px;overflow-x:auto">
+    <table class="data" id="pnl-users-table">
+      <thead>
+        <tr>
+          <th style="width:36px">#</th>
+          <th>Username</th>
+          <th>Full name</th>
+          <th>Email</th>
+          <th style="width:120px">Role</th>
+          <th style="width:80px">Active</th>
+          <th style="width:170px" title="Has the user enrolled (✓) AND is enforcement required by admin (lock)?">2FA</th>
+          <th style="width:130px">Permissions</th>
+          <th style="width:200px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="pnl-users-tbody">
+        <tr><td colspan="9" class="muted" style="text-align:center;padding:24px">Loading users…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- =====================================================================
+     TAB — Roles (default permission matrix)
+     ===================================================================== -->
+<section class="card pnl-pane is-hidden" id="pnl-pane-roles">
+  <header class="card-h">
+    <h2>Role default permissions</h2>
+    <p class="muted small" style="margin:0">
+      Editing a checkbox here changes what every user of that role gets
+      at signup. Per-user overrides (set on the Users tab) layer on top.
+      Admin column is read-only — admins always have every permission.
+    </p>
+  </header>
+  <div style="padding:0 16px 16px;overflow-x:auto">
+    <table class="data" id="pnl-roles-matrix">
+      <thead>
+        <tr id="pnl-roles-header">
+          <th style="min-width:260px">Permission</th>
+          <!-- role columns filled by JS -->
+        </tr>
+      </thead>
+      <tbody id="pnl-roles-body">
+        <tr><td colspan="5" class="muted" style="text-align:center;padding:24px">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- =====================================================================
+     TAB — Activity / audit feed
+     ===================================================================== -->
+<section class="card pnl-pane is-hidden" id="pnl-pane-activity">
+  <header class="card-h">
+    <h2>Recent admin activity</h2>
+    <span class="muted small" id="pnl-audit-count" style="align-self:center">—</span>
+  </header>
+  <div style="padding:0 16px 16px;overflow-x:auto">
+    <table class="data" id="pnl-audit-table">
+      <thead>
+        <tr>
+          <th style="width:170px">When</th>
+          <th style="width:120px">Actor</th>
+          <th style="width:220px">Action</th>
+          <th>Detail</th>
+        </tr>
+      </thead>
+      <tbody id="pnl-audit-tbody">
+        <tr><td colspan="4" class="muted" style="text-align:center;padding:24px">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- =====================================================================
+     TAB — Company Aliases
+     ===================================================================== -->
+<section class="card pnl-pane is-hidden" id="pnl-pane-company-aliases">
+  <header class="card-h">
+    <h2>Company / Entity Names</h2>
+    <div class="actions">
+      <button class="btn-primary btn-sm" id="alias-add-btn">+ Add alias</button>
+      <button class="btn-primary btn-sm" id="alias-save-btn" style="margin-left:6px">Save list</button>
+    </div>
+  </header>
+  <div style="padding:0 16px 16px">
+    <p class="muted small" style="margin:8px 0 12px">
+      These names appear in the project creation dropdown. The selected alias is injected into
+      every report generated under that project (footer, Confidentiality Statement,
+      Executive Summary, and Introduction). Order is preserved — first entry is the default suggestion.
+    </p>
+    <div id="alias-list" style="display:flex;flex-direction:column;gap:8px">
+      <p class="muted small" style="text-align:center;padding:20px">Loading…</p>
+    </div>
+    <p id="alias-msg" class="small" style="margin-top:10px;min-height:1.4em"></p>
+  </div>
+</section>
+
+<!-- =====================================================================
+     User permission editor — modal
+     ===================================================================== -->
+<div id="pnl-perm-modal" class="modal" hidden>
+  <div class="modal-content" style="max-width:780px;max-height:85vh;display:flex;flex-direction:column">
+    <div class="modal-header">
+      <h2 id="pnl-perm-title">Permissions</h2>
+      <button class="close-btn" id="pnl-perm-close">×</button>
+    </div>
+    <div id="pnl-perm-body" style="overflow:auto;padding:0 16px 16px">
+      <p class="muted small" style="margin:8px 0">
+        Tick to grant, untick to revoke. The blue dot ● next to a row
+        means the user has this permission from their <strong>role default</strong> —
+        unticking it creates a revoke override. Crossed-out rows are
+        already explicitly revoked overrides.
+      </p>
+      <div id="pnl-perm-groups">Loading…</div>
+    </div>
+    <div class="modal-footer" style="padding:12px 16px;border-top:1px solid var(--border);text-align:right">
+      <button class="btn-secondary btn-sm" id="pnl-perm-clear-overrides"
+              title="Remove every override on this user — reverts them to whatever their role defaults grant">
+        Clear all overrides
+      </button>
+      <button class="btn-primary btn-sm" id="pnl-perm-done">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================================
+     New user — modal
+     ===================================================================== -->
+<div id="pnl-new-user-modal" class="modal" hidden>
+  <div class="modal-content pnl-new-user-card">
+    <div class="modal-header">
+      <div>
+        <h2 style="margin:0">+ New user</h2>
+        <p class="muted small" style="margin:4px 0 0">
+          Creates an account with the initial credentials below. The user
+          can change their password from <code>/profile/password</code>
+          after first login. Per-user permissions on top of the role
+          default are managed from the user's row → <strong>✎ Permissions</strong>.
+        </p>
+      </div>
+      <button class="close-btn" id="pnl-new-user-close">×</button>
+    </div>
+    <form id="pnl-new-user-form" class="pnl-new-user-form">
+      <!-- Identity row: username + full name side-by-side on wide
+           screens, stacked on narrow.  Grid is responsive via the
+           CSS below — keep field order in DOM-tab order. -->
+      <div class="pnl-form-grid">
+        <label class="pnl-field">
+          <span class="pnl-field-label">Username</span>
+          <input name="username" required autocomplete="off"
+                 placeholder="e.g. jsmith">
+          <span class="pnl-field-hint">Lowercase, no spaces. Used for login.</span>
+        </label>
+        <label class="pnl-field">
+          <span class="pnl-field-label">Full name</span>
+          <input name="full_name" autocomplete="off"
+                 placeholder="e.g. John Smith">
+          <span class="pnl-field-hint">Shown in reports + audit log.</span>
+        </label>
+      </div>
+
+      <label class="pnl-field">
+        <span class="pnl-field-label">Email</span>
+        <input name="email" type="email" required autocomplete="off"
+               placeholder="user@vibedocs.com">
+        <span class="pnl-field-hint">Used for password resets and notifications.</span>
+      </label>
+
+      <label class="pnl-field">
+        <span class="pnl-field-label">Initial password</span>
+        <input name="password" type="password" required minlength="8"
+               autocomplete="new-password"
+               placeholder="At least 8 characters">
+        <span class="pnl-field-hint">
+          User can change this from their profile after first login.
+        </span>
+      </label>
+
+      <label class="pnl-field">
+        <span class="pnl-field-label">Role</span>
+        <select name="role">
+          <option value="consultant" selected>Consultant — default work role (create reports + own findings)</option>
+          <option value="senior">Senior — review &amp; approve reports + library</option>
+          <option value="viewer">Viewer — read-only access</option>
+          <option value="admin">Admin — full system access (use sparingly)</option>
+        </select>
+        <span class="pnl-field-hint">
+          Defaults the user's permission set. Customise individual
+          permissions on top after creation.
+        </span>
+      </label>
+
+      <label class="pnl-field pnl-field-checkbox">
+        <input name="enforce_mfa" type="checkbox" value="1">
+        <span>
+          <strong>Require 2FA at first login</strong>
+          <span class="pnl-field-hint" style="display:block">
+            User will be forced to set up an authenticator app on their
+            next login and won't be able to use the system until they do.
+            Admin can toggle this per user later from the Active column.
+          </span>
+        </span>
+      </label>
+
+      <div class="pnl-new-user-actions">
+        <button type="submit" class="btn-primary">Create user</button>
+        <button type="button" class="btn-secondary" id="pnl-new-user-cancel">Cancel</button>
+      </div>
+      <p class="muted small" id="pnl-new-user-status"></p>
+    </form>
+  </div>
+</div>
+
+<!-- =====================================================================
+     Admin password actions modal — force-set + send-reset
+     ===================================================================== -->
+<div id="pnl-pw-modal" class="modal" hidden>
+  <div class="modal-content pnl-new-user-card">
+    <div class="modal-header">
+      <div>
+        <h2 style="margin:0">🔑 Password actions — <span id="pnl-pw-username"></span></h2>
+        <p class="muted small" style="margin:4px 0 0">
+          Pick one of the two flows below. Both are audit-logged.
+          Force-set is best when the user is locked out and you want
+          to hand them a temporary password directly. The reset-link
+          path is the standard "self-serve" flow — the user picks
+          their own new password after clicking the email link.
+        </p>
+      </div>
+      <button class="close-btn" id="pnl-pw-close">×</button>
+    </div>
+
+    <div style="padding:22px;display:flex;flex-direction:column;gap:18px">
+      <!-- Force-set new password -->
+      <div style="padding:14px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)">
+        <h3 style="margin:0 0 6px;font-size:14px">Option 1 — Force-set a new password</h3>
+        <p class="muted small" style="margin:0 0 10px">
+          The new password is hashed + saved immediately. Any
+          in-flight reset link for this account is invalidated. A
+          confirmation email is sent to the user notifying them of
+          the change (this bypasses their notification preference
+          because it's a security event).
+        </p>
+        <label class="pnl-field">
+          <span class="pnl-field-label">New password</span>
+          <input id="pnl-pw-new" type="password" minlength="8" autocomplete="new-password"
+                 placeholder="At least 8 characters">
+          <span class="pnl-field-hint">
+            Tell the user to change this immediately after they log in.
+          </span>
+        </label>
+        <button class="btn-primary" id="pnl-pw-force-btn"
+                style="margin-top:8px">Force-set password</button>
+      </div>
+
+      <!-- Send reset link -->
+      <div style="padding:14px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)">
+        <h3 style="margin:0 0 6px;font-size:14px">Option 2 — Email a reset link</h3>
+        <p class="muted small" style="margin:0 0 10px">
+          A one-time reset URL (valid for 30 minutes) is mailed to
+          <code id="pnl-pw-email-display">—</code>. The user follows the link
+          and picks their own password. Any prior unused reset
+          tokens on the account are invalidated when the new one is
+          issued.
+        </p>
+        <button class="btn-secondary" id="pnl-pw-send-link-btn">Send reset link</button>
+      </div>
+
+      <p id="pnl-pw-msg" class="small" style="min-height:1.4em"></p>
+    </div>
+  </div>
+</div>
+
+<style>
+.adm-tabs{display:flex;gap:4px;margin:14px 0 10px;border-bottom:1px solid var(--border)}
+.adm-tab{background:transparent;border:0;cursor:pointer;padding:9px 14px;
+  font-size:13px;font-weight:500;color:var(--text-2);
+  border-bottom:2px solid transparent;border-radius:6px 6px 0 0;
+  transition:color .15s,border-color .15s,background .15s}
+.adm-tab:hover{color:var(--text);background:var(--surface-2)}
+.adm-tab.active{color:var(--accent-dark);border-bottom-color:var(--accent-dark);font-weight:600}
+.pnl-pane.is-hidden{display:none}
+
+.pnl-role-pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.pnl-role-admin{background:#1e3a8a22;color:#60a5fa;border:1px solid #60a5fa55}
+.pnl-role-senior{background:#7C5CFC22;color:#7C5CFC;border:1px solid #7C5CFC55}
+.pnl-role-consultant{background:#64748b22;color:#94a3b8;border:1px solid #94a3b855}
+.pnl-role-viewer{background:#475569;color:#cbd5e1;border:1px solid #94a3b855}
+
+.pnl-grp{margin:14px 0 4px;font-weight:600;color:var(--accent-dark);
+  border-bottom:1px solid var(--border);padding-bottom:4px}
+.pnl-perm-row{display:flex;align-items:center;gap:10px;padding:6px 4px;
+  border-bottom:1px dashed var(--border);font-size:13px}
+.pnl-perm-row label{flex:1;cursor:pointer;display:flex;align-items:center;gap:8px;
+  margin:0;line-height:1.4}
+.pnl-perm-row code{font-size:11px;color:var(--text-2)}
+.pnl-perm-state{font-size:10px;padding:1px 6px;border-radius:999px;font-weight:600}
+.pnl-perm-state.default{background:#1e3a8a33;color:#60a5fa}
+.pnl-perm-state.granted{background:#16653433;color:#7C5CFC}
+.pnl-perm-state.revoked{background:#7f1d1d44;color:#fca5a5}
+.pnl-perm-row.revoked label{text-decoration:line-through;opacity:.75}
+.pnl-override-badge{background:#0ea5e9;color:#0c4a6e;padding:1px 7px;border-radius:999px;
+  font-size:11px;font-weight:600}
+.pnl-lock-badge{font-size:13px;cursor:default;opacity:.85}
+.pnl-fail-badge{background:#92400e33;color:#f59e0b;border:1px solid #f59e0b55;
+  padding:1px 6px;border-radius:999px;font-size:10.5px;font-weight:600;margin-left:4px}
+
+/* 2FA column composite — enrolment state pill + admin-only Enforce
+ * checkbox stacked vertically so the admin sees both pieces of state
+ * at a glance: has the user actually set 2FA up, and is the admin
+ * forcing them to. */
+.pnl-mfa-cell{font-size:12px;line-height:1.3}
+.pnl-mfa-state{
+  display:inline-block;padding:1px 7px;border-radius:999px;
+  font-size:10.5px;font-weight:600;letter-spacing:.02em
+}
+.pnl-mfa-state.on{background:#16653433;color:#7C5CFC;border:1px solid #7C5CFC66}
+.pnl-mfa-state.off{background:var(--surface-3);color:var(--text-2);border:1px solid var(--border)}
+.pnl-mfa-enforce-tgl{
+  display:flex;align-items:center;gap:5px;margin:4px 0 0;
+  font-size:11px;color:var(--text-2);cursor:pointer
+}
+.pnl-mfa-enforce-tgl input{accent-color:var(--accent-dark);cursor:pointer}
+.pnl-mfa-enforce-tgl:hover{color:var(--text)}
+
+label{display:block;margin:8px 0}
+label input, label select{display:block;width:100%;margin-top:4px;padding:7px 9px;
+  background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:14px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999}
+.modal[hidden]{display:none}
+.modal-content{background:var(--surface);border:1px solid var(--border);border-radius:8px;display:flex;flex-direction:column;
+  box-shadow:0 30px 60px -10px rgba(0,0,0,.6),0 18px 36px -18px rgba(0,0,0,.5)}
+.modal-header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:18px}
+.modal-header h2{font-size:18px;font-weight:600;line-height:1.3}
+.close-btn{background:transparent;border:0;color:var(--text-2);font-size:24px;cursor:pointer;line-height:1;
+  padding:2px 8px;border-radius:6px;transition:background .15s,color .15s;align-self:flex-start;margin-top:-2px}
+.close-btn:hover{color:var(--text);background:var(--surface-2)}
+
+/* ============================================================
+ * New-user modal — wider + more breathing room than the default
+ * .modal-content. Field grid collapses to a single column under
+ * 540 px so it still works on a narrow viewport.
+ * ============================================================ */
+.pnl-new-user-card{max-width:640px;width:calc(100vw - 40px)}
+.pnl-new-user-form{display:flex;flex-direction:column;gap:18px;padding:22px}
+.pnl-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:540px){
+  .pnl-form-grid{grid-template-columns:1fr}
+}
+.pnl-field{margin:0;display:flex;flex-direction:column;gap:6px}
+.pnl-field .pnl-field-label{
+  font-size:12.5px;font-weight:600;letter-spacing:.02em;
+  color:var(--text);text-transform:uppercase
+}
+.pnl-field input,
+.pnl-field select{
+  margin-top:0;padding:10px 12px;font-size:14px;
+  background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;transition:border-color .15s,box-shadow .15s,background .15s
+}
+.pnl-field input:focus,
+.pnl-field select:focus{
+  outline:none;border-color:var(--accent-dark);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-dark) 25%, transparent);
+  background:var(--surface)
+}
+.pnl-field input::placeholder{color:var(--text-2);opacity:.55}
+.pnl-field-hint{font-size:11.5px;color:var(--text-2);line-height:1.45}
+
+.pnl-field-checkbox{
+  flex-direction:row;align-items:flex-start;gap:12px;
+  padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:8px;cursor:pointer;transition:background .15s,border-color .15s
+}
+.pnl-field-checkbox:hover{background:color-mix(in srgb, var(--accent-dark) 6%, var(--surface-2))}
+.pnl-field-checkbox input[type=checkbox]{
+  width:18px;height:18px;margin-top:2px;flex-shrink:0;
+  accent-color:var(--accent-dark);cursor:pointer
+}
+.pnl-field-checkbox strong{font-size:13.5px;font-weight:600;color:var(--text)}
+
+.pnl-new-user-actions{
+  display:flex;gap:10px;justify-content:flex-end;
+  padding-top:8px;border-top:1px solid var(--border);margin-top:4px
+}
+.pnl-new-user-actions .btn-primary,
+.pnl-new-user-actions .btn-secondary{padding:9px 22px;font-size:13.5px;font-weight:600}
+#pnl-new-user-status:not(:empty){
+  padding:8px 12px;border-radius:6px;font-size:12.5px;
+  background:var(--err-bg);color:var(--err-fg);border:1px solid var(--err-line, #fecaca)
+}
+#pnl-new-user-status.ok:not(:empty){
+  background:var(--ok-bg);color:var(--ok-fg);border-color:var(--ok-line, #86efac)
+}
+</style>
+
+<script nonce="{{ request.state.csp_nonce }}">
+// ============================================================
+// Tab switching
+// ============================================================
+(function pnlInitTabs(){
+  const tabs = document.querySelectorAll(".adm-tab");
+  const panes = {
+    users:             document.getElementById("pnl-pane-users"),
+    roles:             document.getElementById("pnl-pane-roles"),
+    activity:          document.getElementById("pnl-pane-activity"),
+    "company-aliases": document.getElementById("pnl-pane-company-aliases"),
+    backup:            document.getElementById("pnl-pane-backup"),
+  };
+  for (const t of tabs){
+    t.addEventListener("click", () => {
+      tabs.forEach(x => x.classList.toggle("active", x === t));
+      tabs.forEach(x => x.setAttribute("aria-selected", x === t ? "true" : "false"));
+      for (const [k, el] of Object.entries(panes)){
+        if (el) el.classList.toggle("is-hidden", k !== t.dataset.pnlTab);
+      }
+      if (t.dataset.pnlTab === "roles" && !window._pnlRolesLoaded){
+        pnlLoadRoles(); window._pnlRolesLoaded = true;
+      }
+      if (t.dataset.pnlTab === "activity"){
+        pnlLoadAudit();   // refresh every visit
+      }
+    });
+  }
+  // Deep-link support: /admin/panel#backup opens the Backup tab directly. The
+  // local-mode "Backup" nav link relies on this (local users don't get the
+  // full Admin nav, so they land here straight on the migrate feature).
+  const hash = (location.hash || "").replace(/[^a-z0-9-]/gi, "");
+  if (hash){
+    const target = document.querySelector('.adm-tab[data-pnl-tab="' + hash + '"]');
+    if (target) target.click();
+  }
+})();
+
+function pnlEscape(s){
+  return (s == null ? '' : String(s))
+    .replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+let PNL_CATALOG = null;   // {groups, labels, roles}
+async function pnlEnsureCatalog(){
+  if (PNL_CATALOG) return PNL_CATALOG;
+  const r = await fetch("/api/admin/panel/permissions/catalog", {credentials:"include"});
+  if (!r.ok) throw new Error("Failed to load catalog: " + r.statusText);
+  PNL_CATALOG = await r.json();
+  return PNL_CATALOG;
+}
+
+// ============================================================
+// Users tab
+// ============================================================
+async function pnlLoadUsers(){
+  const tbody = document.getElementById("pnl-users-tbody");
+  tbody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;padding:24px">Loading…</td></tr>`;
+  try {
+    const r = await fetch("/api/admin/panel/users", {credentials:"include"});
+    if (!r.ok) throw new Error(await r.text() || r.statusText);
+    const data = await r.json();
+    const users = data.users || [];
+    document.getElementById("pnl-user-count").textContent =
+      `${users.length} user${users.length === 1 ? '' : 's'}`;
+    if (!users.length){
+      tbody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;padding:24px">No users.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = "";
+    users.forEach((u, idx) => {
+      const tr = document.createElement("tr");
+      const rolePill = `<span class="pnl-role-pill pnl-role-${pnlEscape(u.role)}">${pnlEscape(u.role)}</span>`;
+      const ovBadge = u.override_count
+        ? `<span class="pnl-override-badge" title="Per-user grant/revoke overrides">+${u.override_count}</span>`
+        : '';
+      const isLocked = !!u.locked_at;
+      const lockBadge = isLocked
+        ? `<span class="pnl-lock-badge" title="Locked: ${u.lock_reason === 'auto' ? 'auto-locked after failed attempts' : 'locked by admin'} on ${u.locked_at}">🔒</span>`
+        : '';
+      const failBadge = (!isLocked && u.failed_login_attempts > 0)
+        ? `<span class="pnl-fail-badge" title="${u.failed_login_attempts} failed login attempt(s)">⚠ ${u.failed_login_attempts}</span>`
+        : '';
+      tr.innerHTML = `
+        <td>${idx + 1}</td>
+        <td><strong>${pnlEscape(u.username)}</strong> ${lockBadge}${failBadge}</td>
+        <td>${pnlEscape(u.full_name || '')}</td>
+        <td class="small">${pnlEscape(u.email)}</td>
+        <td>
+          <select class="pnl-role-sel" data-uid="${u.id}" ${u.role === 'admin' ? '' : ''}>
+            <option value="admin"      ${u.role === 'admin'      ? 'selected':''}>admin</option>
+            <option value="senior"     ${u.role === 'senior'     ? 'selected':''}>senior</option>
+            <option value="consultant" ${u.role === 'consultant' ? 'selected':''}>consultant</option>
+            <option value="viewer"     ${u.role === 'viewer'     ? 'selected':''}>viewer</option>
+          </select>
+        </td>
+        <td>
+          <label style="margin:0;display:flex;justify-content:center">
+            <input type="checkbox" class="pnl-active-tgl" data-uid="${u.id}" ${u.is_active ? 'checked':''}>
+          </label>
+        </td>
+        <td class="pnl-mfa-cell">
+          <span class="pnl-mfa-state ${u.has_2fa ? 'on' : 'off'}"
+                title="${u.has_2fa ? 'User has enrolled an authenticator' : 'User has not set up 2FA'}">
+            ${u.has_2fa ? '✓ Enrolled' : '— Not enrolled'}
+          </span>
+          <label class="pnl-mfa-enforce-tgl"
+                 title="When ticked, the user is forced to set up 2FA on their next login and can't reach any other page until they do.">
+            <input type="checkbox" class="pnl-mfa-enforce" data-uid="${u.id}" ${u.mfa_enforced ? 'checked' : ''}>
+            <span>Enforce</span>
+          </label>
+        </td>
+        <td>
+          <span class="small">${u.effective_permission_count} effective</span>
+          ${ovBadge}
+        </td>
+        <td style="white-space:nowrap">
+          <button class="btn-secondary btn-sm pnl-edit-perms" data-uid="${u.id}" data-username="${pnlEscape(u.username)}">
+            ✎ Permissions
+          </button>
+          <button class="btn-secondary btn-sm pnl-pw-actions"
+                  data-uid="${u.id}" data-username="${pnlEscape(u.username)}"
+                  data-email="${pnlEscape(u.email || '')}"
+                  title="Force-set a new password OR email the user a reset link">
+            🔑 Password
+          </button>
+          ${isLocked
+            ? `<button class="btn-secondary btn-sm pnl-unlock-btn" data-uid="${u.id}" data-username="${pnlEscape(u.username)}" title="Clear the lock and reset failed-attempt counter">🔓 Unlock</button>
+               ${u.email ? `<button class="btn-secondary btn-sm pnl-unlock-link-btn" data-uid="${u.id}" data-username="${pnlEscape(u.username)}" data-email="${pnlEscape(u.email)}" title="Email the user a 30-minute self-service unlock link">📧 Unlock Link</button>` : ''}`
+            : `<button class="btn-secondary btn-sm pnl-lock-btn" data-uid="${u.id}" data-username="${pnlEscape(u.username)}" title="Immediately lock this account">🔒 Lock</button>`
+          }
+          <button class="btn-secondary btn-sm pnl-anon-btn"
+                  data-uid="${u.id}" data-username="${pnlEscape(u.username)}"
+                  style="color:var(--err-fg,#ef4444);border-color:var(--err-fg,#ef4444)"
+                  title="Irreversibly anonymise all PII on this account (GDPR right-to-erasure)">
+            🗑 Anonymize
+          </button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    // Wire role-change + active-toggle handlers
+    tbody.querySelectorAll(".pnl-role-sel").forEach(sel => {
+      sel.addEventListener("change", async () => {
+        const uid = sel.dataset.uid;
+        const r = await fetch(`/api/admin/panel/users/${uid}`, {
+          method:"PATCH", credentials:"include",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({role: sel.value}),
+        });
+        if (!r.ok){
+          alert("Role change failed: " + (await r.text()));
+          pnlLoadUsers();
+        } else {
+          // Reload to refresh effective-permission count
+          pnlLoadUsers();
+        }
+      });
+    });
+    tbody.querySelectorAll(".pnl-active-tgl").forEach(tgl => {
+      tgl.addEventListener("change", async () => {
+        const uid = tgl.dataset.uid;
+        const r = await fetch(`/api/admin/panel/users/${uid}`, {
+          method:"PATCH", credentials:"include",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({is_active: tgl.checked}),
+        });
+        if (!r.ok){
+          alert("Update failed: " + (await r.text()));
+          tgl.checked = !tgl.checked;
+        }
+      });
+    });
+    tbody.querySelectorAll(".pnl-edit-perms").forEach(btn => {
+      btn.addEventListener("click", () => {
+        pnlOpenPermEditor(btn.dataset.uid, btn.dataset.username);
+      });
+    });
+    // Open the password-actions modal pre-filled with the target
+    // user's id + username + email. The modal hosts both flows;
+    // the admin picks one inside.
+    tbody.querySelectorAll(".pnl-pw-actions").forEach(btn => {
+      btn.addEventListener("click", () => {
+        pnlOpenPasswordModal(btn.dataset.uid, btn.dataset.username,
+                             btn.dataset.email || "");
+      });
+    });
+    // MFA enforce toggle — flips `totp_required` on the server.
+    // Successful toggle takes effect on the user's NEXT page load
+    // (their existing session still works until they hit a route
+    // gated by get_current_user, which checks totp_required live).
+    tbody.querySelectorAll(".pnl-mfa-enforce").forEach(tgl => {
+      tgl.addEventListener("change", async () => {
+        const uid = tgl.dataset.uid;
+        const enforce = tgl.checked;
+        try {
+          const r = await fetch(`/api/admin/panel/users/${uid}/enforce-mfa`, {
+            method: "POST", credentials: "include",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({enforce}),
+          });
+          if (!r.ok) throw new Error(await r.text() || r.statusText);
+        } catch (err) {
+          alert("MFA enforcement change failed: " + err.message);
+          tgl.checked = !tgl.checked;
+        }
+      });
+    });
+    // Lock button — immediately lock the account
+    tbody.querySelectorAll(".pnl-lock-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const {uid, username} = btn.dataset;
+        if (!confirm(`Lock account "${username}"? They will immediately be unable to log in.`)) return;
+        try {
+          const r = await fetch(`/api/admin/panel/users/${uid}/lock`, {
+            method:"POST", credentials:"include",
+          });
+          if (!r.ok) { let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){} throw new Error(d); }
+          pnlLoadUsers();
+        } catch (err) { alert("Lock failed: " + err.message); }
+      });
+    });
+    // Unlock button — clear lock + reset failed-attempt counter
+    tbody.querySelectorAll(".pnl-unlock-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const {uid, username} = btn.dataset;
+        try {
+          const r = await fetch(`/api/admin/panel/users/${uid}/unlock`, {
+            method:"POST", credentials:"include",
+          });
+          if (!r.ok) { let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){} throw new Error(d); }
+          pnlLoadUsers();
+        } catch (err) { alert("Unlock failed: " + err.message); }
+      });
+    });
+    // Send unlock link — emails a 30-minute self-service unlock link
+    tbody.querySelectorAll(".pnl-unlock-link-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const {uid, username, email} = btn.dataset;
+        if (!confirm(`Send an unlock link to "${username}" at ${email}?\n\nThe link expires in 30 minutes.`)) return;
+        btn.disabled = true;
+        btn.textContent = "Sending…";
+        try {
+          const r = await fetch(`/api/admin/panel/users/${uid}/send-unlock-link`, {
+            method:"POST", credentials:"include",
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.detail || r.statusText);
+          alert(d.email_sent
+            ? `Unlock link sent to ${d.target_email}. It expires in ${d.ttl_minutes} minutes.`
+            : `Token minted but email failed: ${d.warning || 'unknown error'}. Ask the user to contact you.`);
+        } catch (err) { alert("Send failed: " + err.message); }
+        finally { btn.disabled = false; btn.textContent = "📧 Unlock Link"; }
+      });
+    });
+    // Anonymize button — irreversible GDPR erasure
+    tbody.querySelectorAll(".pnl-anon-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const {uid, username} = btn.dataset;
+        const confirm1 = confirm(
+          `⚠ IRREVERSIBLE ACTION\n\nAnonymise "${username}"?\n\n` +
+          `All PII (username, email, full name) will be replaced with a placeholder.\n` +
+          `The account will be deactivated and all sessions invalidated.\n\n` +
+          `Type the username to confirm.`
+        );
+        if (!confirm1) return;
+        const typed = prompt(`Type the exact username "${username}" to confirm anonymisation:`);
+        if (typed !== username) { alert("Username did not match. Anonymisation cancelled."); return; }
+        try {
+          const r = await fetch(`/api/admin/panel/users/${uid}/anonymize`, {
+            method:"POST", credentials:"include",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({confirm: username}),
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.detail || r.statusText);
+          alert(`User anonymised. Placeholder: "${d.placeholder_username}"`);
+          pnlLoadUsers();
+        } catch (err) { alert("Anonymise failed: " + err.message); }
+      });
+    });
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="9" style="color:var(--err-fg);text-align:center;padding:24px">Failed: ${pnlEscape(err.message)}</td></tr>`;
+  }
+}
+
+// ============================================================
+// Permission editor modal
+// ============================================================
+async function pnlOpenPermEditor(uid, username){
+  const modal = document.getElementById("pnl-perm-modal");
+  const titleEl = document.getElementById("pnl-perm-title");
+  const groupsEl = document.getElementById("pnl-perm-groups");
+  titleEl.textContent = `Permissions — ${username}`;
+  groupsEl.textContent = "Loading…";
+  modal.hidden = false;
+
+  try {
+    const [catalog, userPerm] = await Promise.all([
+      pnlEnsureCatalog(),
+      fetch(`/api/admin/panel/users/${uid}/permissions`, {credentials:"include"})
+        .then(r => r.ok ? r.json() : Promise.reject(r.statusText)),
+    ]);
+
+    if (userPerm.is_admin){
+      groupsEl.innerHTML = `<p class="muted">This user is an <strong>admin</strong> — they have every permission by design and cannot be restricted from here. Demote them to senior / consultant first if you need fine-grained control.</p>`;
+      return;
+    }
+
+    const roleDefaults = new Set(userPerm.role_default_permissions);
+    const overrideMap = {};
+    for (const ov of userPerm.overrides){
+      overrideMap[ov.permission] = ov.granted;
+    }
+
+    let html = "";
+    for (const grp of catalog.groups){
+      html += `<div class="pnl-grp">${pnlEscape(grp.label)}</div>`;
+      for (const perm of grp.permissions){
+        const isDefault = roleDefaults.has(perm);
+        const explicit = overrideMap[perm];
+        let state, rowCls = "";
+        let checked;
+        if (explicit === true){
+          state = "granted"; checked = true;
+        } else if (explicit === false){
+          state = "revoked"; checked = false; rowCls = "revoked";
+        } else if (isDefault){
+          state = "default"; checked = true;
+        } else {
+          state = ""; checked = false;
+        }
+        html += `
+          <div class="pnl-perm-row ${rowCls}" data-perm="${pnlEscape(perm)}">
+            <label>
+              <input type="checkbox" class="pnl-perm-cb" data-perm="${pnlEscape(perm)}" ${checked ? "checked" : ""}>
+              <div>
+                <div>${pnlEscape(catalog.labels[perm] || perm)}</div>
+                <code>${pnlEscape(perm)}</code>
+              </div>
+            </label>
+            ${state ? `<span class="pnl-perm-state ${state}">${state === 'default' ? 'role default' : state}</span>` : ''}
+          </div>`;
+      }
+    }
+    groupsEl.innerHTML = html;
+
+    // Wire each checkbox to immediately POST. Saves the user from a
+    // submit button — every flip persists. Optimistic UI: on failure
+    // we roll the checkbox back and surface an alert.
+    groupsEl.querySelectorAll(".pnl-perm-cb").forEach(cb => {
+      cb.addEventListener("change", async () => {
+        const perm = cb.dataset.perm;
+        const granted = cb.checked;
+        const isRoleDefault = roleDefaults.has(perm);
+        // If the user is back at the role-default state (default==True
+        // and they re-tick a previously-revoked permission), drop the
+        // override row entirely so the row reflects "matches role".
+        const shouldDeleteOverride =
+          (granted === isRoleDefault) && (perm in overrideMap);
+        try {
+          let resp;
+          if (shouldDeleteOverride){
+            resp = await fetch(`/api/admin/panel/users/${uid}/permissions/${encodeURIComponent(perm)}`,
+              {method:"DELETE", credentials:"include"});
+          } else if (granted !== isRoleDefault){
+            // We need an override (either to grant something the role
+            // doesn't have, or to revoke something it does).
+            resp = await fetch(`/api/admin/panel/users/${uid}/permissions`,
+              {method:"POST", credentials:"include",
+               headers:{"Content-Type":"application/json"},
+               body: JSON.stringify({permission: perm, granted})});
+          } else {
+            return;   // No-op — already matches role
+          }
+          if (!resp.ok) throw new Error(await resp.text() || resp.statusText);
+          // Update state without re-fetching everything
+          if (shouldDeleteOverride){
+            delete overrideMap[perm];
+          } else {
+            overrideMap[perm] = granted;
+          }
+          pnlRefreshPermRowState(perm, isRoleDefault, granted, shouldDeleteOverride);
+        } catch (err) {
+          alert("Save failed: " + err.message);
+          cb.checked = !cb.checked;   // roll back
+        }
+      });
+    });
+  } catch (err) {
+    groupsEl.innerHTML = `<p style="color:var(--err-fg)">Failed: ${pnlEscape(err)}</p>`;
+  }
+}
+
+function pnlRefreshPermRowState(perm, isRoleDefault, granted, droppedOverride){
+  const row = document.querySelector(`.pnl-perm-row[data-perm="${perm.replace(/"/g, '\\"')}"]`);
+  if (!row) return;
+  let state = "";
+  let rowCls = "";
+  if (droppedOverride){
+    state = isRoleDefault ? "default" : "";
+  } else if (granted){
+    state = "granted";
+  } else {
+    state = "revoked";
+    rowCls = "revoked";
+  }
+  row.classList.toggle("revoked", rowCls === "revoked");
+  const stateSpan = row.querySelector(".pnl-perm-state");
+  if (state){
+    if (stateSpan){
+      stateSpan.className = `pnl-perm-state ${state}`;
+      stateSpan.textContent = state === "default" ? "role default" : state;
+    } else {
+      const span = document.createElement("span");
+      span.className = `pnl-perm-state ${state}`;
+      span.textContent = state === "default" ? "role default" : state;
+      row.appendChild(span);
+    }
+  } else if (stateSpan){
+    stateSpan.remove();
+  }
+}
+
+document.getElementById("pnl-perm-close").addEventListener("click", () => {
+  document.getElementById("pnl-perm-modal").hidden = true;
+  pnlLoadUsers();   // refresh override counts in the table
+});
+document.getElementById("pnl-perm-done").addEventListener("click", () => {
+  document.getElementById("pnl-perm-modal").hidden = true;
+  pnlLoadUsers();
+});
+
+// ============================================================
+// New-user modal
+// ============================================================
+// ============================================================
+// Password-actions modal — force-set + send-reset-link
+// ============================================================
+let _pnlPwUid = null;
+function pnlOpenPasswordModal(uid, username, email){
+  _pnlPwUid = uid;
+  document.getElementById("pnl-pw-username").textContent = username;
+  document.getElementById("pnl-pw-email-display").textContent = email || "(no email on file)";
+  document.getElementById("pnl-pw-new").value = "";
+  document.getElementById("pnl-pw-msg").textContent = "";
+  document.getElementById("pnl-pw-modal").hidden = false;
+}
+document.getElementById("pnl-pw-close").addEventListener("click", () => {
+  document.getElementById("pnl-pw-modal").hidden = true;
+});
+
+document.getElementById("pnl-pw-force-btn").addEventListener("click", async () => {
+  const msg = document.getElementById("pnl-pw-msg");
+  const pw  = document.getElementById("pnl-pw-new").value || "";
+  if (pw.length < 8){
+    msg.textContent = "Password must be at least 8 characters.";
+    msg.style.color = "var(--err-fg)";
+    return;
+  }
+  if (!confirm(
+    "Force-set this user's password? This invalidates any in-flight " +
+    "reset link and sends them a 'password changed' confirmation email."
+  )) return;
+  msg.textContent = "Saving…";
+  msg.style.color = "var(--text-2)";
+  try {
+    const r = await fetch(`/api/admin/panel/users/${_pnlPwUid}/set-password`, {
+      method:"POST", credentials:"include",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({new_password: pw}),
+    });
+    if (!r.ok){
+      let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){}
+      throw new Error(d);
+    }
+    msg.textContent = "✓ Password reset. Share it with the user out-of-band; tell them to change it after first login.";
+    msg.style.color = "var(--ok-fg)";
+    document.getElementById("pnl-pw-new").value = "";
+  } catch (err){
+    msg.textContent = "Failed: " + err.message;
+    msg.style.color = "var(--err-fg)";
+  }
+});
+
+document.getElementById("pnl-pw-send-link-btn").addEventListener("click", async () => {
+  const msg = document.getElementById("pnl-pw-msg");
+  if (!confirm(
+    "Send a password-reset email to this user? Any prior unused " +
+    "reset links on the account are invalidated."
+  )) return;
+  msg.textContent = "Sending…";
+  msg.style.color = "var(--text-2)";
+  try {
+    const r = await fetch(`/api/admin/panel/users/${_pnlPwUid}/send-reset-link`, {
+      method:"POST", credentials:"include",
+    });
+    if (!r.ok){
+      let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){}
+      throw new Error(d);
+    }
+    const data = await r.json();
+    if (data.email_sent){
+      msg.textContent = `✓ Reset link sent to ${data.target_email} (expires in ${data.ttl_minutes} min).`;
+    } else {
+      msg.textContent = `Token issued but SMTP send failed — ${data.warning || ''}. The token is valid for ${data.ttl_minutes} min.`;
+    }
+    msg.style.color = data.email_sent ? "var(--ok-fg)" : "var(--err-fg)";
+  } catch (err){
+    msg.textContent = "Failed: " + err.message;
+    msg.style.color = "var(--err-fg)";
+  }
+});
+
+document.getElementById("pnl-new-user-btn").addEventListener("click", () => {
+  document.getElementById("pnl-new-user-modal").hidden = false;
+});
+document.getElementById("pnl-new-user-close").addEventListener("click", () => {
+  document.getElementById("pnl-new-user-modal").hidden = true;
+});
+document.getElementById("pnl-new-user-cancel").addEventListener("click", () => {
+  document.getElementById("pnl-new-user-modal").hidden = true;
+});
+document.getElementById("pnl-new-user-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const status = document.getElementById("pnl-new-user-status");
+  status.classList.remove("ok");
+  // FormData includes the checkbox only when checked → coerce to bool
+  // so the API gets a real `enforce_mfa: true/false` regardless of
+  // browser-level checkbox quirks.
+  const fd = new FormData(e.target);
+  const body = {
+    username: fd.get("username"),
+    full_name: fd.get("full_name") || null,
+    email: fd.get("email"),
+    password: fd.get("password"),
+    role: fd.get("role"),
+    enforce_mfa: fd.get("enforce_mfa") === "1",
+  };
+  status.textContent = "Creating…";
+  try {
+    const r = await fetch("/api/admin/panel/users", {
+      method:"POST", credentials:"include",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(body),
+    });
+    if (!r.ok){
+      const err = await r.json().catch(() => ({detail: r.statusText}));
+      status.textContent = "Error: " + (err.detail || r.statusText);
+      return;
+    }
+    status.classList.add("ok");
+    status.textContent = "User created.";
+    setTimeout(() => {
+      document.getElementById("pnl-new-user-modal").hidden = true;
+      status.textContent = "";
+      status.classList.remove("ok");
+      e.target.reset();
+      pnlLoadUsers();
+    }, 600);
+  } catch (err) {
+    status.textContent = "Error: " + err.message;
+  }
+});
+
+// ============================================================
+// Roles matrix
+// ============================================================
+async function pnlLoadRoles(){
+  const tbody = document.getElementById("pnl-roles-body");
+  const header = document.getElementById("pnl-roles-header");
+  tbody.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center;padding:24px">Loading…</td></tr>`;
+  try {
+    const catalog = await pnlEnsureCatalog();
+    const editableRoles = catalog.roles.filter(r => r.name !== "admin");
+    const perRolePromise = await Promise.all(editableRoles.map(r =>
+      fetch(`/api/admin/panel/roles/${r.name}/permissions`, {credentials:"include"})
+        .then(rsp => rsp.json())
+    ));
+    const roleData = {};
+    perRolePromise.forEach((d, i) => { roleData[editableRoles[i].name] = d; });
+    // Admin column — read-only, every permission ticked.
+    header.innerHTML =
+      `<th style="min-width:260px">Permission</th>` +
+      `<th style="text-align:center;width:90px" class="pnl-role-admin-col">admin</th>` +
+      editableRoles.map(r =>
+        `<th style="text-align:center;width:110px">${pnlEscape(r.name)}</th>`).join("");
+    let html = "";
+    for (const grp of catalog.groups){
+      html += `<tr><td colspan="${editableRoles.length + 2}" class="pnl-grp" style="padding:8px 4px">${pnlEscape(grp.label)}</td></tr>`;
+      for (const perm of grp.permissions){
+        html += `<tr><td>
+          <div>${pnlEscape(catalog.labels[perm] || perm)}</div>
+          <code class="small muted">${pnlEscape(perm)}</code>
+        </td>`;
+        // Admin column — always ticked, disabled (immutable).
+        html += `<td style="text-align:center"><input type="checkbox" checked disabled title="Admin role is immutable — always has every permission"></td>`;
+        for (const r of editableRoles){
+          const d = roleData[r.name];
+          const eff = new Set(d.effective_permissions);
+          const checked = eff.has(perm);
+          html += `<td style="text-align:center"><input type="checkbox" class="pnl-role-cb" data-role="${r.name}" data-perm="${pnlEscape(perm)}" ${checked ? "checked" : ""}></td>`;
+        }
+        html += `</tr>`;
+      }
+    }
+    tbody.innerHTML = html;
+    tbody.querySelectorAll(".pnl-role-cb").forEach(cb => {
+      cb.addEventListener("change", async () => {
+        const role = cb.dataset.role;
+        const perm = cb.dataset.perm;
+        const granted = cb.checked;
+        try {
+          const r = await fetch(`/api/admin/panel/roles/${role}/permissions`, {
+            method:"POST", credentials:"include",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({permission: perm, granted}),
+          });
+          if (!r.ok) throw new Error(await r.text() || r.statusText);
+        } catch (err) {
+          alert("Save failed: " + err.message);
+          cb.checked = !cb.checked;
+        }
+      });
+    });
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:var(--err-fg);text-align:center;padding:24px">Failed: ${pnlEscape(err.message)}</td></tr>`;
+  }
+}
+
+// ============================================================
+// Audit feed
+// ============================================================
+async function pnlLoadAudit(){
+  const tbody = document.getElementById("pnl-audit-tbody");
+  const countEl = document.getElementById("pnl-audit-count");
+  tbody.innerHTML = `<tr><td colspan="4" class="muted" style="text-align:center;padding:24px">Loading…</td></tr>`;
+  try {
+    const r = await fetch("/api/admin/panel/audit?limit=200", {credentials:"include"});
+    if (!r.ok) throw new Error(await r.text() || r.statusText);
+    const data = await r.json();
+    const items = data.items || [];
+    countEl.textContent = `${items.length} recent entries`;
+    if (!items.length){
+      tbody.innerHTML = `<tr><td colspan="4" class="muted" style="text-align:center;padding:24px">No admin activity yet.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = items.map(i => {
+      const when = i.at ? new Date(i.at).toLocaleString() : "—";
+      const detail = (typeof i.detail === "object")
+        ? `<code class="small">${pnlEscape(JSON.stringify(i.detail))}</code>`
+        : pnlEscape(i.detail || "");
+      return `<tr>
+        <td class="muted small">${pnlEscape(when)}</td>
+        <td>${pnlEscape(i.actor || '—')}</td>
+        <td><code class="small">${pnlEscape(i.action)}</code></td>
+        <td>${detail}</td>
+      </tr>`;
+    }).join("");
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="4" style="color:var(--err-fg);text-align:center;padding:24px">Failed: ${pnlEscape(err.message)}</td></tr>`;
+  }
+}
+
+// Initial load
+pnlLoadUsers();
+
+// ============================================================
+// Company Aliases tab
+// ============================================================
+(function(){
+  let _aliases = [];
+
+  function renderAliasList(){
+    const el = document.getElementById('alias-list');
+    if (!el) return;
+    if (_aliases.length === 0){
+      el.innerHTML = '<p class="muted small" style="margin:0;padding:8px 0">No aliases yet. Click "+ Add alias" to create one.</p>';
+      return;
+    }
+    el.innerHTML = _aliases.map((a, i) => `
+      <div style="display:flex;gap:8px;align-items:center" data-alias-index="${i}">
+        <input type="text" value="${pnlEscape(a)}"
+               style="flex:1;font-size:14px"
+               oninput="_aliasUpdateRow(${i}, this.value)">
+        <button class="btn-danger btn-sm" onclick="_aliasRemoveRow(${i})"
+                style="flex-shrink:0" title="Remove this alias">✕</button>
+      </div>
+    `).join('');
+  }
+
+  window._aliasUpdateRow = function(i, val){ _aliases[i] = val; };
+  window._aliasRemoveRow = function(i){
+    _aliases.splice(i, 1);
+    renderAliasList();
+  };
+
+  async function loadAliases(){
+    try {
+      const r = await fetch('/api/admin/panel/company-aliases', {credentials:'include'});
+      if (!r.ok) throw new Error(await r.text());
+      const data = await r.json();
+      _aliases = data.aliases || [];
+      renderAliasList();
+    } catch(err){
+      const el = document.getElementById('alias-list');
+      if (el) el.innerHTML = `<p style="color:var(--err-fg)">Failed to load: ${pnlEscape(err.message)}</p>`;
+    }
+  }
+
+  async function saveAliases(){
+    const msg = document.getElementById('alias-msg');
+    // Re-collect current input values in case JS array got stale
+    document.querySelectorAll('#alias-list input[type=text]').forEach((inp, i) => {
+      _aliases[i] = inp.value;
+    });
+    const cleaned = _aliases.map(a => a.trim()).filter(Boolean);
+    try {
+      const r = await fetch('/api/admin/panel/company-aliases', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
+        body: JSON.stringify({aliases: cleaned}),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || r.statusText);
+      const data = await r.json();
+      _aliases = data.aliases;
+      renderAliasList();
+      msg.textContent = '✓ Saved.';
+      msg.style.color = 'var(--ok-fg)';
+      setTimeout(() => { msg.textContent = ''; }, 3000);
+    } catch(err){
+      msg.textContent = 'Save failed: ' + pnlEscape(err.message);
+      msg.style.color = 'var(--err-fg)';
+    }
+  }
+
+  document.getElementById('alias-add-btn')?.addEventListener('click', () => {
+    _aliases.push('');
+    renderAliasList();
+    // Focus the new input
+    const inputs = document.querySelectorAll('#alias-list input[type=text]');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  });
+  document.getElementById('alias-save-btn')?.addEventListener('click', saveAliases);
+
+  // Lazy-load when the tab is first activated
+  let _aliasLoaded = false;
+  document.querySelectorAll('.adm-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.pnlTab === 'company-aliases' && !_aliasLoaded){
+        _aliasLoaded = true;
+        loadAliases();
+      }
+    });
+  });
+})();
+
+// ===== Backup / Migrate — import bundle =====
+(function () {
+  const form = document.getElementById("data-import-form");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("data-import-msg");
+    if (!confirm(
+      "Import will WIPE the current VibeDocs data and restore the uploaded bundle.\n\n" +
+      "Only do this on a fresh image. Continue?"
+    )) return;
+    msg.style.color = "var(--text-2)";
+    msg.textContent = "Importing… do not close this tab.";
+    try {
+      const r = await fetch("/api/admin/panel/import", {
+        method: "POST", body: new FormData(form), credentials: "include",
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        msg.style.color = "var(--err-fg,#ef4444)";
+        msg.textContent = "Error: " + (data.detail || r.status);
+        return;
+      }
+      msg.style.color = "var(--accent-dark)";
+      msg.textContent =
+        `✓ Restored ${data.rows_restored} row(s) and ${data.files_restored} file(s)` +
+        (data.exported_at ? ` from a bundle exported ${data.exported_at}.` : ".") +
+        " Reload the app to see your data.";
+      form.reset();
+    } catch (err) {
+      msg.style.color = "var(--err-fg,#ef4444)";
+      msg.textContent = "Error: " + err.message;
+    }
+  });
+})();
+</script>
+{% endblock %}

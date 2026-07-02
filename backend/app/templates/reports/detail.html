@@ -1,0 +1,1567 @@
+{% extends "base.html" %}
+{% block title %}{{ report.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ report.name }}</h1>
+    <p class="muted">
+      <a href="/projects/{{ report.project_id }}">{{ report.project.name }}</a>
+      · <span id="tpl-display">{{ report.template.name }}</span>
+      <a href="#" id="tpl-change-link" style="font-size:12px;margin-left:2px"
+         title="Change the report template (Web / API / Mobile / Cloud …)">change</a>
+      <select id="tpl-change-select" hidden data-current="{{ report.template_id }}"
+              style="font-size:12px;margin-left:4px;padding:2px 6px"></select>
+      · current <code>v{{ report.current_version }}</code>
+    </p>
+  </div>
+  <div class="actions">
+    <div id="presence-bar" class="presence-bar" hidden
+         data-report-id="{{ report.id }}"
+         data-my-user-id="{{ user.id }}"></div>
+    <button id="share-btn" class="btn-secondary" hidden>
+      <span style="margin-right:4px">👥</span> Share / Permissions
+    </button>
+  </div>
+</div>
+
+<section class="card">
+  <header class="card-h">
+    <h2>Versions</h2>
+    <button id="bump-btn" class="btn-secondary" title="Create a new version copied from the latest">
+      + New version
+    </button>
+  </header>
+  <table class="data">
+    <thead>
+      <tr><th>Version</th><th>Report type</th><th>Notes</th><th>Created</th><th>Files</th><th></th></tr>
+    </thead>
+    <tbody>
+      {# The version-kind marker is stamped onto `notes` as a
+         "[initial]" / "[retest]" / "[final]" / "[update]" prefix by
+         the create-new-version endpoint — we strip it back out here
+         and render it as the row's Report Type. Labels match the
+         dropdown in the New Version modal exactly so the column
+         reads as the same word the consultant picked.
+
+         Old layout had a "Draft?" column with two badges:
+            * FINAL / DRAFT — watermark state (is_draft)
+            * FINAL DELIVERY — version-kind milestone
+         which both ended in "Final" and looked like a duplicate. The
+         column is now a single TYPE badge ("Initial Report" / "Retest
+         Report" / "Final Report" / "Report Update") plus, ONLY when
+         the version's still a draft, a small amber "DRAFT" tag to
+         the right so reviewers can see at a glance that the output
+         is still watermarked. Approved / published versions show
+         only the report-type badge — no "FINAL" label, because the
+         type ("Final Report") already conveys that meaning. #}
+      {% set _kinds = {'initial':'Initial Report', 'retest':'Retest Report',
+                       'final':'Final Report', 'update':'Report Update'} %}
+      {% for v in report.versions %}
+      {% set _kind = none %}
+      {% set _notes = v.notes or "" %}
+      {% if _notes and _notes.startswith('[') and ']' in _notes %}
+        {% set _maybe = _notes[1:_notes.index(']')] %}
+        {% if _maybe in _kinds %}
+          {% set _kind = _maybe %}
+          {% set _notes = _notes[_notes.index(']') + 1:].lstrip() %}
+        {% endif %}
+      {% endif %}
+      <tr data-version-id="{{ v.id }}">
+        <td><code>v{{ v.version }}</code></td>
+        <td>
+          {# Report-type badge + inline editor. Click the badge to open
+             a small picker; the picker submits to
+             `PATCH /api/reports/versions/<vid>/report-kind` and the
+             row re-renders with the new label. Lets the consultant
+             backfill legacy "Uncategorised" rows AND correct a
+             mis-classification without bumping a new version. #}
+          {% if _kind %}
+            <button type="button"
+                    class="badge badge-accent rt-edit-btn"
+                    data-current-kind="{{ _kind }}"
+                    title="Click to change the report type. (Saves immediately — doesn't bump the version.)">
+              {{ _kinds[_kind] }} <span class="muted small" style="margin-left:4px">✎</span>
+            </button>
+          {% else %}
+            <button type="button"
+                    class="badge rt-edit-btn"
+                    data-current-kind=""
+                    title="No report type recorded on this version. Click to set one."
+                    style="background:transparent;border:1px dashed var(--border);color:var(--text-2)">
+              Uncategorised <span class="muted small" style="margin-left:4px">✎</span>
+            </button>
+          {% endif %}
+          {% if v.is_draft %}
+            <span class="badge draft" style="margin-left:6px"
+                  title="The latest Generate left the DRAFT watermark on every page. Untick the Draft checkbox on the next Generate (or get the version approved in Reviews) to drop it.">DRAFT</span>
+          {% endif %}
+          {# Surface the review-status when it's not the implicit
+             default. `published` is the one consultants actually need
+             to see because it controls whether Delete works and whether
+             the watermark is forced off. `in_review` and `approved` are
+             also worth surfacing as a quick at-a-glance status. #}
+          {% if v.review_status == 'published' %}
+            <span class="badge badge-accent" style="margin-left:6px;background:var(--ok-bg,#1f3a26);color:var(--ok-fg,#5fe28a)"
+                  title="This version is locked as the immutable-final artefact. Re-open it as a draft to edit or delete.">PUBLISHED</span>
+          {% elif v.review_status == 'in_review' %}
+            <span class="badge" style="margin-left:6px;background:#3a2a1f;color:#f5b069"
+                  title="This version is currently with a reviewer. The DRAFT watermark is forced on until they approve.">IN REVIEW</span>
+          {% elif v.review_status == 'approved' %}
+            <span class="badge" style="margin-left:6px;background:#1f3a26;color:#5fe28a"
+                  title="Approved by reviewer. Watermark is suppressed on next Generate.">APPROVED</span>
+          {% elif v.review_status == 'rejected' %}
+            <span class="badge" style="margin-left:6px;background:#3a1f1f;color:#f56b6b"
+                  title="Rejected by reviewer. Address feedback and re-submit.">REJECTED</span>
+          {% endif %}
+        </td>
+        <td>{{ _notes }}</td>
+        <td class="muted">{{ v.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>
+          {% if v.generated_docx_path %}<a href="/api/reports/versions/{{ v.id }}/download?fmt=docx">DOCX</a>{% endif %}
+          {% if v.generated_pdf_path %} · <a href="/api/reports/versions/{{ v.id }}/download?fmt=pdf">PDF</a>{% endif %}
+        </td>
+        <td style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">
+          <a class="btn-secondary" href="/reports/versions/{{ v.id }}/edit">Edit / Generate →</a>
+          {# Free Edit is always shown so the user can discover the
+             feature, but it requires a generated DOCX to do anything
+             useful. `data-has-docx` is read by the modal JS, which
+             switches into a friendly "Generate first" hint state when
+             false instead of trying to fetch nothing. #}
+          <button class="btn-secondary"
+                  type="button"
+                  data-freedit-version="{{ v.id }}"
+                  data-freedit-version-label="v{{ v.version }}"
+                  data-has-docx="{{ 'true' if v.generated_docx_path else 'false' }}"
+                  title="Hand-edit the generated DOCX in your browser or in Word">
+            ✎ Free edit
+          </button>
+          {# Re-open as draft button — only shown when the row is
+             PUBLISHED. Published rows are otherwise locked: the Edit
+             page refuses to mutate them, Delete refuses to wipe them.
+             This button is the explicit unlock path. The handler asks
+             for a strong confirmation (since unpublishing a delivered
+             report is a destructive lifecycle change) and the backend
+             requires `confirm_unpublish=true`, which is audited. #}
+          {% if v.review_status == 'published' %}
+            <button class="btn-secondary pnl-version-unpublish"
+                    type="button"
+                    data-version-id="{{ v.id }}"
+                    data-version-label="{{ v.version }}"
+                    title="Unlock this published version back into draft so you can edit or delete it. The transition is audited.">
+              ↻ Re-open as draft
+            </button>
+          {% endif %}
+          {# Per-row delete button. The handler at the bottom of the
+             file decides between latest-version (single confirm) and
+             older-version (extra "you're nuking history" warning +
+             type-the-version safety prompt). PUBLISHED rows kick into
+             a combined "unpublish-then-delete" flow that calls
+             reopen-draft first then re-issues the DELETE — one user
+             confirmation, two server calls. #}
+          <button class="btn-danger pnl-version-delete"
+                  type="button"
+                  data-version-id="{{ v.id }}"
+                  data-version-label="{{ v.version }}"
+                  data-is-latest="{{ 'true' if loop.last else 'false' }}"
+                  data-status="{{ v.review_status or 'draft' }}"
+                  title="Delete this version + every finding on it. Cannot be undone.">
+            🗑 Delete
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<!-- ====== RFI Documents ====== -->
+<style>
+.btn-hack-sm {
+  background: rgba(57,255,20,.08);
+  color: #39ff14;
+  border: 1px solid rgba(57,255,20,.45);
+  box-shadow: 0 0 6px rgba(57,255,20,.10), inset 0 0 6px rgba(57,255,20,.03);
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  letter-spacing: .04em;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .15s, box-shadow .15s, border-color .15s;
+}
+.btn-hack-sm:hover {
+  background: rgba(57,255,20,.16);
+  border-color: rgba(57,255,20,.75);
+  box-shadow: 0 0 12px rgba(57,255,20,.22), inset 0 0 8px rgba(57,255,20,.06);
+}
+.btn-hack-lg {
+  background: rgba(57,255,20,.08);
+  color: #39ff14;
+  border: 1px solid rgba(57,255,20,.45);
+  box-shadow: 0 0 8px rgba(57,255,20,.12), inset 0 0 8px rgba(57,255,20,.04);
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  letter-spacing: .04em;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 7px 18px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background .15s, box-shadow .15s, border-color .15s;
+}
+.btn-hack-lg:hover {
+  background: rgba(57,255,20,.16);
+  border-color: rgba(57,255,20,.75);
+  box-shadow: 0 0 14px rgba(57,255,20,.25), inset 0 0 10px rgba(57,255,20,.08);
+}
+.rfi-row {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:12px 14px; border:1px solid var(--border);
+  border-radius:8px; margin-bottom:8px; background:var(--surface);
+  gap:12px;
+}
+.rfi-row:hover { border-color:rgba(57,255,20,.25); }
+</style>
+
+<section class="card" id="rfi-section" style="margin-top:16px">
+  <header class="card-h">
+    <h2>RFI documents <span class="muted small" id="rfi-count"></span></h2>
+    <p class="muted small" style="margin:0">Scoping documents, URLs, user roles, etc. from the client</p>
+  </header>
+  <div style="padding:14px 16px">
+    <form id="rfi-upload-form" enctype="multipart/form-data"
+          style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px">
+      <label style="flex:1;min-width:240px;margin:0">
+        Attach RFI (PDF, Excel)
+        <input type="file" name="file" accept=".pdf,.xlsx,.xls,.xlsm" required>
+      </label>
+      <button class="btn-hack-lg" type="submit">⬆ Upload</button>
+    </form>
+    <p id="rfi-msg" class="small" style="margin:0 0 8px;min-height:1.4em"></p>
+    <ul id="rfi-list" style="list-style:none;padding:0;margin:0">
+      <li class="muted small">Loading…</li>
+    </ul>
+
+    <!-- Inline preview panel -->
+    <div id="rfi-preview-block" hidden style="margin-top:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <strong id="rfi-preview-title" style="font-size:13px;flex:1"></strong>
+        <span id="rfi-preview-status" class="muted small"></span>
+        <button class="btn-hack-sm" type="button" id="rfi-preview-close">✕ Close preview</button>
+      </div>
+      <iframe id="rfi-preview-frame"
+              style="width:100%;height:75vh;border:1px solid rgba(57,255,20,.2);
+                     border-radius:6px;background:#fff;
+                     box-shadow:0 0 12px rgba(57,255,20,.06)" title="RFI preview"></iframe>
+    </div>
+  </div>
+</section>
+
+<!-- ====== New Version modal ======
+     Replaces the old "always bump minor" confirm dialog. Lets the user
+     pick BOTH the report type (Initial / Retest / Final / Update) AND
+     the explicit X.Y version number via a per-digit stepper. The stepper
+     has a hacker-green pulsing accent + glow to match the rest of the
+     theme. -->
+<div id="bump-modal" class="modal" hidden>
+  <div class="modal-card" style="max-width:560px;width:96vw">
+    <header class="card-h">
+      <h2>New version</h2>
+      <button class="link" type="button"
+              onclick="document.getElementById('bump-modal').hidden = true">×</button>
+    </header>
+    <div class="modal-body">
+
+      {# Stash the current version so the JS can populate the stepper. #}
+      {% set _cur = report.current_version or '0.1' %}
+      <p class="small muted" style="margin:0 0 14px">
+        Current latest: <code class="hacker-mono">v{{ _cur }}</code>.
+        Pick a report type and choose the new version number — every
+        finding from the latest version is copied into the new one.
+      </p>
+
+      <label style="display:block;margin:0 0 14px">
+        Report type <span style="color:var(--err-fg)">*</span>
+        {# Required. The versions list relies on this to render the
+           "Report type" column — versions without a kind show up as
+           "Uncategorised" and that's a UX rough edge. We made the
+           pick mandatory at version-creation time so every new row
+           is labelled correctly. The Create button below is also
+           gated client-side on this select having a value (see
+           bump-create-btn handler). #}
+        <select id="bump-report-kind" required>
+          <option value="" disabled selected>— Select report type —</option>
+          <option value="retest">Retest Report</option>
+          <option value="final">Final Report</option>
+          <option value="update">Report Update</option>
+        </select>
+        <small class="muted">Stamped onto the version notes so you can
+          tell deliverables apart in the versions list.</small>
+      </label>
+
+      <label style="display:block;margin:0 0 6px;font-weight:600">Version number</label>
+      <div class="hacker-stepper" id="bump-stepper" role="group" aria-label="Pick the new version">
+        <div class="hk-digit" data-axis="major">
+          <button type="button" class="hk-btn hk-up"   data-step="+1" aria-label="Major up">▲</button>
+          <div class="hk-cell"><span id="hk-major" class="hk-val">0</span></div>
+          <button type="button" class="hk-btn hk-down" data-step="-1" aria-label="Major down">▼</button>
+          <span class="hk-label">major</span>
+        </div>
+        <span class="hk-dot">.</span>
+        <div class="hk-digit" data-axis="minor">
+          <button type="button" class="hk-btn hk-up"   data-step="+1" aria-label="Minor up">▲</button>
+          <div class="hk-cell"><span id="hk-minor" class="hk-val">1</span></div>
+          <button type="button" class="hk-btn hk-down" data-step="-1" aria-label="Minor down">▼</button>
+          <span class="hk-label">minor</span>
+        </div>
+        <div class="hk-preview" aria-live="polite">
+          <span class="muted small" style="display:block;margin-bottom:4px">Will create</span>
+          <span class="hk-target hacker-mono">v<span id="hk-target-text">0.2</span></span>
+        </div>
+      </div>
+
+      <!-- Shortcut row: jump to canonical next minor / next major. -->
+      <div class="actions" style="margin-top:12px;gap:6px;flex-wrap:wrap">
+        <button type="button" class="btn-secondary btn-sm" id="bump-quick-minor">
+          Bump minor → <code class="hacker-mono" id="bump-minor-hint">v0.2</code>
+        </button>
+        <button type="button" class="btn-secondary btn-sm" id="bump-quick-major">
+          Bump major → <code class="hacker-mono" id="bump-major-hint">v1.0</code>
+        </button>
+      </div>
+
+      <p id="bump-err" class="small" style="margin:12px 0 0;min-height:1.4em;color:var(--err-fg)"></p>
+
+      <div class="actions" style="margin-top:14px;display:flex;justify-content:flex-end;gap:6px">
+        <button class="btn-secondary" type="button"
+                onclick="document.getElementById('bump-modal').hidden = true">Cancel</button>
+        <button class="btn-primary" type="button" id="bump-submit">Create version</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Hacker-green stepper. Pulsing border + soft glow on the value cells
+   to match the in-app accent. Keeps the parent .modal layout intact
+   (no fixed widths, fits inside the 560px modal-card above). */
+.hacker-mono{
+  font-family:ui-monospace,Consolas,"Liberation Mono",monospace;
+  letter-spacing:.04em;
+}
+.hacker-stepper{
+  display:flex;align-items:flex-end;gap:14px;padding:14px 18px;
+  border-radius:10px;border:1px solid var(--accent-dark, var(--accent, #7C5CFC));
+  background:linear-gradient(180deg,
+    rgba(124,92,252,.06) 0%, rgba(124,92,252,.02) 100%);
+  box-shadow:0 0 0 1px rgba(124,92,252,.18) inset,
+             0 0 20px rgba(124,92,252,.10);
+}
+.hk-digit{
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  position:relative;
+}
+.hk-digit .hk-label{
+  font-size:10px;text-transform:uppercase;letter-spacing:.12em;
+  color:var(--accent-dark, var(--accent));
+  margin-top:4px;
+}
+.hk-btn{
+  background:transparent;border:1px solid var(--accent-dark, var(--accent));
+  border-radius:4px;color:var(--accent-dark, var(--accent));
+  width:40px;height:22px;line-height:18px;
+  font-size:11px;cursor:pointer;
+  transition:background .12s, color .12s, transform .08s, box-shadow .15s;
+}
+.hk-btn:hover{
+  background:var(--accent-dark, var(--accent));color:#0a0c10;
+  box-shadow:0 0 12px rgba(124,92,252,.5);
+}
+.hk-btn:active{ transform:scale(.92); }
+.hk-cell{
+  width:60px;height:54px;
+  display:flex;align-items:center;justify-content:center;
+  background:#0a0c10;color:var(--accent-dark, var(--accent));
+  border:1px solid var(--accent-dark, var(--accent));border-radius:6px;
+  font-family:ui-monospace,Consolas,monospace;font-size:30px;font-weight:700;
+  letter-spacing:.02em;
+  box-shadow:0 0 0 1px rgba(124,92,252,.2) inset,
+             0 0 14px rgba(124,92,252,.18);
+  text-shadow:0 0 6px rgba(124,92,252,.6);
+  position:relative;
+  animation:hk-flicker 2.2s ease-in-out infinite;
+}
+.hk-cell::after{
+  /* Scanline overlay for the terminal vibe. */
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(
+    180deg,
+    rgba(255,255,255,0) 0,
+    rgba(255,255,255,0) 3px,
+    rgba(124,92,252,.05) 4px
+  );
+  border-radius:6px;
+}
+.hk-cell.hk-bump{ animation:hk-bump .35s ease-out; }
+@keyframes hk-bump{
+  0%   { transform:translateY(0);    text-shadow:0 0 6px rgba(124,92,252,.6); }
+  40%  { transform:translateY(-3px); text-shadow:0 0 16px rgba(124,92,252,1); color:#d6f08a; }
+  100% { transform:translateY(0);    text-shadow:0 0 6px rgba(124,92,252,.6); }
+}
+@keyframes hk-flicker{
+  0%, 100% { box-shadow:0 0 0 1px rgba(124,92,252,.2) inset, 0 0 14px rgba(124,92,252,.18); }
+  50%      { box-shadow:0 0 0 1px rgba(124,92,252,.32) inset, 0 0 22px rgba(124,92,252,.28); }
+}
+.hk-dot{
+  font-size:30px;color:var(--accent-dark, var(--accent));
+  line-height:.5;padding:0 2px;
+  text-shadow:0 0 6px rgba(124,92,252,.5);
+}
+.hk-preview{
+  margin-left:auto;text-align:right;
+}
+.hk-target{
+  font-size:22px;font-weight:700;
+  color:var(--accent-dark, var(--accent));
+  text-shadow:0 0 6px rgba(124,92,252,.5);
+}
+</style>
+
+<!-- ====== Share / Permissions modal ====== -->
+<div id="share-modal" class="modal" hidden>
+  <div class="modal-card" style="max-width:680px">
+    <header class="card-h">
+      <h2>Share &quot;{{ report.name }}&quot;</h2>
+      <button class="link" onclick="document.getElementById('share-modal').hidden = true">×</button>
+    </header>
+    <div class="modal-body">
+
+      <!-- Add new grant -->
+      <div id="share-add-block" style="border:1px solid var(--border);
+           border-radius:8px;padding:14px;margin-bottom:16px;background:var(--surface-2)">
+        <h3 style="margin:0 0 10px">Grant access</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+          <label style="flex:1;min-width:220px;margin:0">
+            User
+            <div style="position:relative">
+              <input id="share-user-q" type="search"
+                     placeholder="Search username / name / email"
+                     autocomplete="off">
+              <div id="share-user-results"
+                   style="position:absolute;top:100%;left:0;right:0;
+                          background:var(--surface);border:1px solid var(--border);
+                          border-radius:6px;max-height:240px;overflow:auto;z-index:5;
+                          box-shadow:var(--shadow);margin-top:2px"
+                   hidden></div>
+            </div>
+            <input id="share-user-id" type="hidden">
+            <p id="share-user-picked" class="small" style="margin:6px 0 0;color:var(--accent-dark)"></p>
+          </label>
+          <label style="margin:0">
+            Access level
+            <select id="share-level">
+              <option value="view">View</option>
+              <option value="edit" selected>Edit</option>
+            </select>
+          </label>
+          <button id="share-add-btn" class="btn-primary">Add</button>
+        </div>
+        <label style="display:block;margin-top:10px">
+          Note (optional)
+          <input id="share-note" type="text" placeholder="Why are you sharing?">
+        </label>
+        <p id="share-add-msg" class="small" style="margin:8px 0 0;min-height:1.4em"></p>
+      </div>
+
+      <!-- Current grants -->
+      <h3 style="margin:0 0 8px">Current access</h3>
+      <div id="share-grants-list">
+        <p class="muted small">Loading…</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+const REPORT_ID = {{ report.id }};
+
+// ============================================================
+// New-version modal — per-digit version stepper + report-type picker
+// ============================================================
+(function(){
+  const CURRENT_VERSION = "{{ report.current_version or '0.1' }}";
+  const modal     = document.getElementById('bump-modal');
+  const openBtn   = document.getElementById('bump-btn');
+  const submitBtn = document.getElementById('bump-submit');
+  const errEl     = document.getElementById('bump-err');
+  const kindSel   = document.getElementById('bump-report-kind');
+  const tgtTxt    = document.getElementById('hk-target-text');
+  const majorEl   = document.getElementById('hk-major');
+  const minorEl   = document.getElementById('hk-minor');
+  const minorHint = document.getElementById('bump-minor-hint');
+  const majorHint = document.getElementById('bump-major-hint');
+  if (!openBtn || !modal) return;
+
+  // Parse "X.Y" → [X, Y]. Falls back to [0, 1] on malformed input so the
+  // modal opens to a sane default rather than blank fields.
+  function parseVer(s){
+    const m = (s || '').match(/^(\d+)\.(\d+)$/);
+    return m ? [parseInt(m[1],10), parseInt(m[2],10)] : [0, 1];
+  }
+  let [curMajor, curMinor] = parseVer(CURRENT_VERSION);
+  // Working draft of the new version. Defaults to the canonical
+  // "bump minor" so a user who just clicks Create gets the historical
+  // behaviour without thinking.
+  let major = curMajor;
+  let minor = curMinor + 1;
+
+  function flash(el){
+    el.classList.remove('hk-bump');
+    // Force reflow so the animation re-triggers on consecutive clicks.
+    void el.offsetWidth;
+    el.classList.add('hk-bump');
+  }
+  function render(){
+    majorEl.textContent = String(major);
+    minorEl.textContent = String(minor);
+    tgtTxt.textContent  = `${major}.${minor}`;
+    errEl.textContent   = '';
+  }
+  function step(axis, delta){
+    if (axis === 'major'){
+      major = Math.max(0, Math.min(99, major + delta));
+      // When the major digit changes we reset minor to 0 — that's the
+      // industry-standard semver-ish move (1.0, 2.0). The user can
+      // still pop minor back up explicitly if they want 2.4 or similar.
+      if (delta > 0) minor = 0;
+      flash(majorEl.parentElement);
+    } else {
+      minor = Math.max(0, Math.min(99, minor + delta));
+      flash(minorEl.parentElement);
+    }
+    render();
+  }
+
+  // Wire each ▲ / ▼ button via delegated listener so we don't need to
+  // bind four handlers individually.
+  document.getElementById('bump-stepper').addEventListener('click', (e) => {
+    const btn = e.target.closest && e.target.closest('.hk-btn');
+    if (!btn) return;
+    const axis = btn.parentElement.dataset.axis;
+    const step_ = parseInt(btn.dataset.step, 10) || 0;
+    step(axis, step_);
+  });
+
+  // Shortcut buttons just snap the stepper to those canonical values.
+  document.getElementById('bump-quick-minor').addEventListener('click', () => {
+    major = curMajor;
+    minor = curMinor + 1;
+    flash(minorEl.parentElement);
+    render();
+  });
+  document.getElementById('bump-quick-major').addEventListener('click', () => {
+    major = curMajor + 1;
+    minor = 0;
+    flash(majorEl.parentElement);
+    render();
+  });
+
+  openBtn.addEventListener('click', () => {
+    [curMajor, curMinor] = parseVer(CURRENT_VERSION);
+    major = curMajor;
+    minor = curMinor + 1;
+    minorHint.textContent = `v${curMajor}.${curMinor + 1}`;
+    majorHint.textContent = `v${curMajor + 1}.0`;
+    kindSel.value = '';
+    render();
+    modal.hidden = false;
+  });
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.hidden = true;
+  });
+
+  submitBtn.addEventListener('click', async () => {
+    const ver = `${major}.${minor}`;
+    if (ver === CURRENT_VERSION){
+      errEl.textContent = 'Version is unchanged. Increment major or minor first.';
+      return;
+    }
+    // Report type is REQUIRED. The versions list relies on it to
+    // render the "Report type" column — versions without a kind end
+    // up tagged "Uncategorised" and the table loses its at-a-glance
+    // meaning. We refuse to create a new version until the user picks
+    // one. (The <select required> attribute helps native form flows
+    // but we trigger via a <button> click, so we re-check here.)
+    const kind = (kindSel.value || '').trim();
+    if (!kind){
+      errEl.textContent = 'Pick a report type before creating the version.';
+      try { kindSel.focus(); } catch(_) {}
+      return;
+    }
+    const params = new URLSearchParams({version: ver, report_kind: kind});
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating…';
+    try {
+      const r = await fetch(`/api/reports/{{ report.id }}/versions?` + params.toString(),
+                            {method: "POST", credentials: "include"});
+      if (!r.ok){
+        let detail = r.statusText;
+        try { detail = (await r.json()).detail || detail; } catch(_){}
+        throw new Error(detail);
+      }
+      const data = await r.json();
+      window.location = "/reports/versions/" + data.version_id + "/edit";
+    } catch (err){
+      errEl.textContent = 'Failed: ' + (err.message || err);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create version';
+    }
+  });
+})();
+
+// ============================================================
+// Inline "edit report type" for every versions-list row
+// ------------------------------------------------------------
+// Click the report-type badge on any row, pick a new kind, and the
+// row re-tags itself via PATCH /api/reports/versions/<vid>/report-kind.
+// Designed to backfill legacy "Uncategorised" rows AND correct a
+// mistaken kind without bumping a new version.
+// ============================================================
+(function(){
+  const KINDS = {
+    initial: 'Initial Report',
+    retest:  'Retest Report',
+    final:   'Final Report',
+    update:  'Report Update',
+  };
+
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest && e.target.closest('.rt-edit-btn');
+    if (!btn) return;
+    const tr = btn.closest('tr');
+    if (!tr) return;
+    const vid = tr.dataset.versionId;
+    if (!vid) return;
+
+    // Build a small <select> inline so the user picks without a modal.
+    // We replace the badge with the select, then swap back once the
+    // PATCH completes (or the user cancels by hitting Escape).
+    const current = btn.dataset.currentKind || '';
+    const sel = document.createElement('select');
+    sel.style.cssText = 'font-size:12px;padding:2px 6px;border-radius:4px;'
+                       + 'border:1px solid var(--border);background:var(--surface);'
+                       + 'color:var(--text)';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '— Pick type —';
+    placeholder.disabled = true;
+    placeholder.selected = !current;
+    sel.appendChild(placeholder);
+    for (const [code, label] of Object.entries(KINDS)){
+      const opt = document.createElement('option');
+      opt.value = code; opt.textContent = label;
+      if (code === current) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    btn.replaceWith(sel);
+    sel.focus();
+
+    function restore(){
+      // Replace the select with the new badge based on whatever was
+      // selected. If nothing was picked we restore the original.
+      const picked = sel.value || current;
+      const labelText = picked ? KINDS[picked] : 'Uncategorised';
+      const newBtn = document.createElement('button');
+      newBtn.type = 'button';
+      newBtn.className = 'badge ' + (picked ? 'badge-accent' : '') + ' rt-edit-btn';
+      newBtn.dataset.currentKind = picked;
+      newBtn.title = picked
+        ? 'Click to change the report type. (Saves immediately — doesn\'t bump the version.)'
+        : 'No report type recorded on this version. Click to set one.';
+      if (!picked){
+        newBtn.style.cssText = 'background:transparent;border:1px dashed var(--border);color:var(--text-2)';
+      }
+      newBtn.innerHTML = labelText
+        + ' <span class="muted small" style="margin-left:4px">✎</span>';
+      sel.replaceWith(newBtn);
+    }
+
+    sel.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape'){ restore(); }
+    });
+
+    sel.addEventListener('change', async () => {
+      const newKind = sel.value;
+      if (!newKind || newKind === current){ restore(); return; }
+      sel.disabled = true;
+      try {
+        const r = await fetch(
+          `/api/reports/versions/${vid}/report-kind?kind=${encodeURIComponent(newKind)}`,
+          {method: 'PATCH', credentials: 'include'},
+        );
+        if (!r.ok){
+          let detail = r.statusText;
+          try { detail = (await r.json()).detail || detail; } catch(_) {}
+          alert('Failed to update report type: ' + detail);
+          sel.disabled = false;
+          return;
+        }
+        // Set the select's value as the new "current" so restore()
+        // renders the new label.
+        restore();
+      } catch (err){
+        alert('Failed to update report type: ' + (err.message || err));
+        sel.disabled = false;
+      }
+    });
+  });
+})();
+
+// ============================================================
+// Share / Permissions UI
+// ============================================================
+(function(){
+  const shareBtn = document.getElementById("share-btn");
+  const modal = document.getElementById("share-modal");
+  const grantsList = document.getElementById("share-grants-list");
+  const addBlock = document.getElementById("share-add-block");
+  const userQ = document.getElementById("share-user-q");
+  const userResults = document.getElementById("share-user-results");
+  const userIdHidden = document.getElementById("share-user-id");
+  const userPicked = document.getElementById("share-user-picked");
+  const levelSel = document.getElementById("share-level");
+  const noteInp = document.getElementById("share-note");
+  const addBtn = document.getElementById("share-add-btn");
+  const addMsg = document.getElementById("share-add-msg");
+
+  let myAccess = null;  // "view" | "edit" | "admin" | null
+
+  async function api(path, opts){
+    const r = await fetch(path, { credentials:"include", ...(opts||{}) });
+    let body = null;
+    try { body = await r.json(); } catch(_) {}
+    if (!r.ok) throw new Error((body && body.detail) || r.statusText);
+    return body;
+  }
+
+  function levelBadge(level, isOwner, isImplicit){
+    const label = isOwner ? "Owner"
+                : isImplicit ? `${level} (implicit)`
+                : level;
+    const color = (level === "admin") ? "var(--accent-soft)"
+                : (level === "edit") ? "var(--info-bg)"
+                : "var(--surface-3)";
+    return `<span class="badge" style="background:${color};padding:2px 8px;border-radius:6px;font-size:11px">${label}</span>`;
+  }
+
+  function renderGrants(items){
+    grantsList.innerHTML = "";
+    if (!items.length) {
+      grantsList.innerHTML = '<p class="muted small">No one has access yet (except implicit admins).</p>';
+      return;
+    }
+    const canManage = (myAccess === "admin");
+    for (const g of items){
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;justify-content:space-between;" +
+                          "gap:10px;padding:10px 12px;border:1px solid var(--border);" +
+                          "border-radius:8px;margin-bottom:6px;background:var(--surface)";
+      const who = `${escapeHtml(g.user.full_name || g.user.username)} ` +
+                  `<span class="muted small">(${escapeHtml(g.user.username)})</span>`;
+      const note = g.note ? `<div class="muted small">${escapeHtml(g.note)}</div>` : "";
+      row.innerHTML = `
+        <div>
+          <div>${who} ${levelBadge(g.access_level, g.is_owner, g.is_implicit)}</div>
+          ${note}
+        </div>
+        <div class="actions"></div>
+      `;
+      const actions = row.querySelector(".actions");
+
+      // Owner / implicit cannot be modified
+      if (g.is_owner || g.is_implicit) {
+        const tag = document.createElement("span");
+        tag.className = "muted small";
+        tag.textContent = g.is_owner ? "(immutable)" : "(implicit)";
+        actions.appendChild(tag);
+      } else if (canManage) {
+        const sel = document.createElement("select");
+        for (const lvl of ["view","edit"]){
+          const o = document.createElement("option");
+          o.value = lvl; o.textContent = lvl;
+          if (lvl === g.access_level) o.selected = true;
+          sel.appendChild(o);
+        }
+        sel.addEventListener("change", async () => {
+          try {
+            await api(`/api/reports/${REPORT_ID}/access/${g.user.id}`, {
+              method: "PUT",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({access_level: sel.value}),
+            });
+            await loadGrants();
+          } catch (e){ alert("Change failed: " + e.message); }
+        });
+        const del = document.createElement("button");
+        del.className = "btn-danger";
+        del.style.marginLeft = "8px";
+        del.textContent = "Revoke";
+        del.addEventListener("click", async () => {
+          if (!confirm(`Revoke ${g.user.username}'s access?`)) return;
+          try {
+            await api(`/api/reports/${REPORT_ID}/access/${g.user.id}`, { method: "DELETE" });
+            await loadGrants();
+          } catch (e){ alert("Revoke failed: " + e.message); }
+        });
+        actions.appendChild(sel);
+        actions.appendChild(del);
+      } else {
+        // Non-admin viewer: just show, no controls
+      }
+      grantsList.appendChild(row);
+    }
+  }
+
+  async function loadGrants(){
+    grantsList.innerHTML = '<p class="muted small">Loading…</p>';
+    try {
+      const data = await api(`/api/reports/${REPORT_ID}/access`);
+      renderGrants(data.items || []);
+    } catch (e){
+      grantsList.innerHTML = `<p style="color:var(--err-fg)">Failed to load: ${escapeHtml(e.message)}</p>`;
+    }
+  }
+
+  // User search (debounced)
+  let searchTimer = null;
+  userQ.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    const q = userQ.value.trim();
+    userIdHidden.value = "";
+    userPicked.textContent = "";
+    if (!q) { userResults.hidden = true; userResults.innerHTML = ""; return; }
+    searchTimer = setTimeout(async () => {
+      try {
+        const users = await api(`/api/users?q=${encodeURIComponent(q)}&active_only=true`);
+        userResults.innerHTML = "";
+        if (!users.length) {
+          userResults.innerHTML = '<div style="padding:10px"><span class="muted small">No matches</span></div>';
+        } else {
+          for (const u of users.slice(0, 20)) {
+            const opt = document.createElement("div");
+            opt.style.cssText = "padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--border)";
+            opt.innerHTML = `<strong>${escapeHtml(u.username)}</strong>` +
+                            ` <span class="muted small">${escapeHtml(u.full_name || "")} · ${escapeHtml(u.email)}</span>`;
+            opt.addEventListener("mouseenter", () => opt.style.background = "var(--surface-2)");
+            opt.addEventListener("mouseleave", () => opt.style.background = "");
+            opt.addEventListener("click", () => {
+              userIdHidden.value = u.id;
+              userPicked.textContent = `Selected: ${u.username}`;
+              userQ.value = u.username;
+              userResults.hidden = true;
+            });
+            userResults.appendChild(opt);
+          }
+        }
+        userResults.hidden = false;
+      } catch(e){
+        userResults.innerHTML = `<div style="padding:10px;color:var(--err-fg)">${escapeHtml(e.message)}</div>`;
+        userResults.hidden = false;
+      }
+    }, 200);
+  });
+
+  // Close the dropdown when clicking outside the search input + dropdown
+  document.addEventListener("click", (e) => {
+    if (!userResults.hidden && !userResults.contains(e.target) && e.target !== userQ){
+      userResults.hidden = true;
+    }
+  });
+
+  addBtn.addEventListener("click", async () => {
+    const uid = parseInt(userIdHidden.value, 10);
+    if (!uid) {
+      addMsg.textContent = "Pick a user from the search results.";
+      addMsg.style.color = "var(--err-fg)";
+      return;
+    }
+    addMsg.textContent = "Adding…";
+    addMsg.style.color = "var(--text-2)";
+    try {
+      await api(`/api/reports/${REPORT_ID}/access`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          user_id: uid,
+          access_level: levelSel.value,
+          note: noteInp.value || null,
+        }),
+      });
+      addMsg.textContent = "Granted.";
+      addMsg.style.color = "var(--ok-fg)";
+      userQ.value = ""; userIdHidden.value = ""; userPicked.textContent = "";
+      noteInp.value = "";
+      await loadGrants();
+    } catch (e){
+      addMsg.textContent = "Failed: " + e.message;
+      addMsg.style.color = "var(--err-fg)";
+    }
+  });
+
+  function escapeHtml(s){
+    return (s ?? "").replace(/[&<>"']/g, c =>
+      ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+  }
+
+  // Decide whether to show the Share button: anyone with view+ sees it but
+  // only admins can mutate. Non-admins still benefit from seeing who else
+  // has access, so we show it for everyone with view+.
+  async function init(){
+    try {
+      const r = await api(`/api/reports/${REPORT_ID}`);
+      myAccess = (r && r.my_access) || "view";
+      shareBtn.hidden = false;
+      if (myAccess !== "admin"){
+        addBlock.style.display = "none";  // viewers/editors: read-only modal
+      }
+    } catch (_){
+      // 403 or similar — leave the button hidden (defense in depth)
+    }
+  }
+
+  shareBtn.addEventListener("click", () => {
+    modal.hidden = false;
+    loadGrants();
+  });
+
+  // Click backdrop to close
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.hidden = true;
+  });
+
+  init();
+})();
+</script>
+<!-- ====== Free Edit modal ======
+     Two flows live behind the same button: in-browser edit
+     (server converts the generated DOCX → HTML, user edits inline) and
+     download-and-re-upload (full Word fidelity). The user picks per
+     click via the tab strip at the top. -->
+<div id="freedit-modal" class="modal" hidden>
+  <div class="modal-card" style="max-width:980px;width:96vw">
+    <header class="card-h">
+      <h2>Free edit <span id="freedit-version-label" class="muted small"></span></h2>
+      <button class="link" type="button"
+              onclick="document.getElementById('freedit-modal').hidden = true">×</button>
+    </header>
+    <div class="modal-body">
+      <p class="small muted" style="margin:0 0 10px">
+        Make ad-hoc tweaks to the generated DOCX without re-running the
+        template — fix alignment, add a missing section, reposition a graph.
+        Saving replaces the version's DOCX file (and invalidates the cached PDF).
+        Hitting <strong>Generate</strong> on the version edit page later will
+        overwrite this with a fresh template render.
+      </p>
+
+      <div class="cvss-tabs" id="freedit-tabs" role="tablist" style="margin:0 0 12px">
+        <button type="button" class="cvss-tab active" data-tab="browser" role="tab" aria-selected="true">Edit in browser</button>
+        <button type="button" class="cvss-tab"        data-tab="word"    role="tab">Edit in Word</button>
+      </div>
+
+      <!-- Tab: in-browser editor -->
+      <div class="cvss-pane" id="freedit-pane-browser">
+        <p id="freedit-browser-msg" class="small muted" style="margin:0 0 8px">
+          Loading editable HTML…
+        </p>
+        <div id="freedit-editor-host"
+             style="border:1px solid var(--border);border-radius:6px;
+                    background:#fff;color:#111;min-height:60vh;max-height:70vh;
+                    overflow:auto;padding:14px"
+             contenteditable="false"></div>
+        <p class="small muted" style="margin:10px 0 6px">
+          ✓ Basic formatting (headings, bold, italic, lists, tables, images) survives the round-trip.<br>
+          ⚠ Complex Word features (text boxes, SmartArt, footnotes, comments) are not preserved by the in-browser editor — use <em>Edit in Word</em> for those.
+        </p>
+        <div class="actions" style="margin-top:6px;gap:6px">
+          <button class="btn-primary" type="button" id="freedit-save-browser">Save changes</button>
+          <button class="btn-secondary" type="button" id="freedit-reload-browser"
+                  title="Discard your edits and re-load the current DOCX content.">Reload from DOCX</button>
+        </div>
+        <p id="freedit-browser-save-msg" class="small" style="margin:6px 0 0;min-height:1.4em"></p>
+      </div>
+
+      <!-- Tab: download + re-upload -->
+      <div class="cvss-pane is-hidden" id="freedit-pane-word">
+        <ol class="small" style="margin:0 0 12px 22px;padding:0;line-height:1.7">
+          <li>Click <strong>Download current DOCX</strong> below.</li>
+          <li>Open it in Microsoft Word and edit freely — everything Word can do is preserved.</li>
+          <li>Save as <code>.docx</code> (not <code>.doc</code>).</li>
+          <li>Drop the saved file back here and click <strong>Save uploaded DOCX</strong>.</li>
+        </ol>
+        <div class="actions" style="gap:6px;flex-wrap:wrap">
+          <a class="btn-secondary" id="freedit-download-link" target="_blank" rel="noopener">⤓ Download current DOCX</a>
+        </div>
+        <div style="margin-top:14px">
+          <label>
+            Replace with edited DOCX
+            <input type="file" id="freedit-upload-file" accept=".docx">
+          </label>
+        </div>
+        <div class="actions" style="margin-top:10px;gap:6px">
+          <button class="btn-primary" type="button" id="freedit-save-upload">Save uploaded DOCX</button>
+        </div>
+        <p id="freedit-upload-msg" class="small" style="margin:6px 0 0;min-height:1.4em"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+(function(){
+  const modal       = document.getElementById('freedit-modal');
+  const verLabel    = document.getElementById('freedit-version-label');
+  const editorHost  = document.getElementById('freedit-editor-host');
+  const browserMsg  = document.getElementById('freedit-browser-msg');
+  const browserSaveMsg = document.getElementById('freedit-browser-save-msg');
+  const saveBtn     = document.getElementById('freedit-save-browser');
+  const reloadBtn   = document.getElementById('freedit-reload-browser');
+  const uploadInput = document.getElementById('freedit-upload-file');
+  const uploadBtn   = document.getElementById('freedit-save-upload');
+  const uploadMsg   = document.getElementById('freedit-upload-msg');
+  const downloadLink= document.getElementById('freedit-download-link');
+
+  // Active version id while the modal is open; nulled on close.
+  let activeVid = null;
+
+  // ----- Tab switching -----
+  const tabs = document.querySelectorAll('#freedit-tabs .cvss-tab');
+  const panes = {
+    browser: document.getElementById('freedit-pane-browser'),
+    word:    document.getElementById('freedit-pane-word'),
+  };
+  for (const t of tabs){
+    t.addEventListener('click', () => {
+      tabs.forEach(x => x.classList.toggle('active', x === t));
+      tabs.forEach(x => x.setAttribute('aria-selected', x === t ? 'true' : 'false'));
+      for (const [k, el] of Object.entries(panes)){
+        el.classList.toggle('is-hidden', k !== t.dataset.tab);
+      }
+    });
+  }
+
+  // Tracks whether the currently-active version has a generated DOCX
+  // on disk. Drives whether we even attempt to load the in-browser
+  // editor or whether we switch into the "Generate first" hint state.
+  let activeHasDocx = false;
+
+  // ----- Wire each row's "Re-open as draft" button (published only) -----
+  //
+  // Standalone unpublish flow — for when the consultant wants to keep
+  // the version but edit it (typo fix, late addition, etc.) without
+  // bumping a new version. The backend requires `confirm_unpublish=true`
+  // as an explicit safety belt; the audit log records `was_published=true`
+  // so the lineage is preserved.
+  async function unpublishVersion(vid, label){
+    const r = await fetch(
+      `/api/reports/versions/${vid}/reopen-draft?confirm_unpublish=true`,
+      { method:'POST', credentials:'include' }
+    );
+    if (!r.ok){
+      let d = r.statusText;
+      try { d = (await r.json()).detail || d; } catch(_){}
+      throw new Error(d);
+    }
+    return r.json();
+  }
+
+  for (const btn of document.querySelectorAll('.pnl-version-unpublish')){
+    btn.addEventListener('click', async () => {
+      const vid   = btn.getAttribute('data-version-id');
+      const label = btn.getAttribute('data-version-label') || '?';
+      if (!confirm(
+        `Re-open version v${label} as a draft?\n\n` +
+        `This version was PUBLISHED — i.e. locked as the immutable final ` +
+        `artefact. Re-opening unlocks it so it can be edited or deleted.\n\n` +
+        `The transition is audited (recorded as "was_published=true").\n\n` +
+        `Continue?`
+      )) return;
+
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = 'Re-opening…';
+      try {
+        await unpublishVersion(vid, label);
+        // Reload so the row repaints without the PUBLISHED badge +
+        // without the Re-open button + with Delete now operational.
+        window.location.reload();
+      } catch (err){
+        alert('Re-open failed: ' + err.message);
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
+    });
+  }
+
+  // ----- Wire each row's Delete button -----
+  //
+  // Three flows depending on row state:
+  //   * latest + unpublished   → single confirm dialog
+  //   * older  + unpublished   → extra "you're nuking history" warning
+  //                              + type-the-version safety prompt
+  //   * published (any age)    → combined unpublish-then-delete flow.
+  //                              Single user confirmation, two server
+  //                              calls under the hood: POST reopen-draft
+  //                              with confirm_unpublish=true, then the
+  //                              normal DELETE. Both audit-log server-side.
+  for (const btn of document.querySelectorAll('.pnl-version-delete')){
+    btn.addEventListener('click', async () => {
+      const vid       = btn.getAttribute('data-version-id');
+      const label     = btn.getAttribute('data-version-label') || '?';
+      const isLatest  = btn.getAttribute('data-is-latest') === 'true';
+      const status    = btn.getAttribute('data-status') || '';
+      const isPublished = (status === 'published');
+
+      let confirmOlder = false;
+      if (isPublished){
+        // Combined flow: one strong confirmation covering both the
+        // unpublish AND the delete. Older-version safety still applies
+        // on top — published v0.1 still needs the type-the-version
+        // check because deleting it nukes historical record.
+        if (!confirm(
+          `⚠  v${label} is PUBLISHED.\n\n` +
+          `Deleting a published version means:\n` +
+          `  1. Unpublishing it (audited as "was_published=true")\n` +
+          `  2. Hard-deleting the row + every finding on it\n\n` +
+          `This wipes the immutable final artefact you previously ` +
+          `signed off on. CANNOT be undone.\n\n` +
+          `Continue?`
+        )) return;
+        if (!isLatest){
+          const typed = prompt(
+            `Final check — type the version number to confirm:\n\n  ${label}\n\n` +
+            `(Cancel to abort.)`
+          );
+          if (!typed) return;
+          const cleaned = String(typed).trim().replace(/^v/i, '');
+          if (cleaned !== label){
+            alert(`That doesn't match "${label}". Aborting — nothing was changed.`);
+            return;
+          }
+          confirmOlder = true;
+        }
+
+        btn.disabled = true;
+        const prev = btn.textContent;
+        btn.textContent = 'Unpublishing…';
+        try {
+          await unpublishVersion(vid, label);
+        } catch (err){
+          alert('Unpublish failed: ' + err.message + '\n\nThe version was NOT deleted.');
+          btn.disabled = false;
+          btn.textContent = prev;
+          return;
+        }
+        btn.textContent = 'Deleting…';
+        try {
+          const url = `/api/reports/versions/${vid}` +
+                      (confirmOlder ? '?confirm_older=true' : '');
+          const r = await fetch(url, { method:'DELETE', credentials:'include' });
+          if (!r.ok){
+            let d = r.statusText;
+            try { d = (await r.json()).detail || d; } catch(_){}
+            throw new Error(d);
+          }
+          window.location.reload();
+        } catch (err){
+          alert(
+            'Delete failed after unpublish succeeded: ' + err.message +
+            '\n\nThe version is now in DRAFT state. You can retry Delete, ' +
+            'or hit Re-open as draft → cancel to leave it as a draft.'
+          );
+          btn.disabled = false;
+          btn.textContent = prev;
+        }
+        return;
+      }
+
+      if (isLatest){
+        if (!confirm(
+          `Delete version v${label}?\n\n` +
+          `This wipes every finding on this version and cannot be ` +
+          `undone. The next version-bump will copy from whatever ` +
+          `becomes the new latest.`
+        )) return;
+      } else {
+        if (!confirm(
+          `⚠  You're about to delete an OLDER version of this report (v${label}).\n\n` +
+          `Older versions are usually kept as a historical record of ` +
+          `what was delivered. Deleting one erases that record + every ` +
+          `finding on it — and CANNOT be undone.\n\n` +
+          `Are you sure you want to continue?`
+        )) return;
+        // Type-the-version safety so an accidental "OK" can't blow
+        // away v0.1 when the consultant meant v0.3.
+        const typed = prompt(
+          `Final check — type the version number to confirm:\n\n  ${label}\n\n` +
+          `(Cancel to abort.)`
+        );
+        if (!typed) return;
+        const cleaned = String(typed).trim().replace(/^v/i, '');
+        if (cleaned !== label){
+          alert(`That doesn't match "${label}". Aborting — nothing was deleted.`);
+          return;
+        }
+        confirmOlder = true;
+      }
+
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = 'Deleting…';
+      try {
+        const url = `/api/reports/versions/${vid}` +
+                    (confirmOlder ? '?confirm_older=true' : '');
+        const r = await fetch(url, { method:'DELETE', credentials:'include' });
+        if (!r.ok){
+          let d = r.statusText;
+          try { d = (await r.json()).detail || d; } catch(_){}
+          throw new Error(d);
+        }
+        // Reload the page so the versions table reflects the deletion +
+        // the parent report's `current_version` badge updates.
+        window.location.reload();
+      } catch (err){
+        alert('Delete failed: ' + err.message);
+        btn.disabled = false;
+        btn.textContent = prev;
+      }
+    });
+  }
+
+  // ----- Wire each row's Free edit button -----
+  for (const btn of document.querySelectorAll('[data-freedit-version]')){
+    btn.addEventListener('click', () => {
+      activeVid = btn.getAttribute('data-freedit-version');
+      activeHasDocx = btn.getAttribute('data-has-docx') === 'true';
+      const label = btn.getAttribute('data-freedit-version-label') || '';
+      verLabel.textContent = label ? '· ' + label : '';
+      // Reset state
+      browserSaveMsg.textContent = '';
+      uploadMsg.textContent = '';
+      uploadInput.value = '';
+      if (!activeHasDocx){
+        // No DOCX for this version yet → disable download button, switch to hint state.
+        downloadLink.removeAttribute('href');
+        downloadLink.style.opacity = '0.4';
+        downloadLink.style.pointerEvents = 'none';
+        downloadLink.title = 'Generate the report first to enable download.';
+        editorHost.contentEditable = 'false';
+        editorHost.innerHTML =
+          '<div style="padding:24px;text-align:center">' +
+          '  <p style="margin:0 0 8px;font-size:14px;color:var(--text)">' +
+          '    There is no generated DOCX for ' + (label || 'this version') + ' yet.' +
+          '  </p>' +
+          '  <p class="small muted" style="margin:0 0 14px">' +
+          '    Free Edit lets you tweak the rendered Word document. ' +
+          '    Generate the report once so there is something to edit.' +
+          '  </p>' +
+          '  <a class="btn-primary" href="/reports/versions/' + activeVid + '/edit#generate">' +
+          '    Open Edit / Generate →' +
+          '  </a>' +
+          '</div>';
+        browserMsg.textContent = '';
+        uploadMsg.textContent = 'Generate the report first to download or upload.';
+        uploadMsg.style.color = 'var(--text-2)';
+      } else {
+        downloadLink.href = `/api/reports/versions/${activeVid}/download?fmt=docx`;
+        downloadLink.style.opacity = '';
+        downloadLink.style.pointerEvents = '';
+        downloadLink.title = '';
+        loadHtml();
+      }
+      modal.hidden = false;
+    });
+  }
+  // Backdrop click closes
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal){ modal.hidden = true; activeVid = null; }
+  });
+
+  // ----- Load editable HTML from the server -----
+  async function loadHtml(){
+    if (!activeVid) return;
+    browserMsg.textContent = 'Loading editable HTML…';
+    editorHost.contentEditable = 'false';
+    editorHost.innerHTML = '<p class="muted small" style="padding:14px">Loading…</p>';
+    try {
+      const r = await fetch(`/api/reports/versions/${activeVid}/freedit/html`,
+                            {credentials:'include'});
+      if (!r.ok){
+        let detail = r.statusText;
+        try { detail = (await r.json()).detail || detail; } catch(_){}
+        editorHost.innerHTML =
+          `<p style="color:var(--err-fg);padding:14px">Couldn't load: ${escHtml(detail)}</p>`;
+        browserMsg.textContent = '';
+        return;
+      }
+      const html = await r.text();
+      // The server returns a complete <html> doc; we only want the body
+      // contents to drop into our contenteditable host, so extract it.
+      const m = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      editorHost.innerHTML = m ? m[1] : html;
+      editorHost.contentEditable = 'true';
+      browserMsg.textContent = 'Edit freely below. Click Save changes when done.';
+    } catch (err){
+      editorHost.innerHTML =
+        `<p style="color:var(--err-fg);padding:14px">${escHtml(err.message || err)}</p>`;
+      browserMsg.textContent = '';
+    }
+  }
+
+  // ----- Save in-browser edits -----
+  saveBtn.addEventListener('click', async () => {
+    if (!activeVid) return;
+    if (!activeHasDocx){
+      browserSaveMsg.textContent = 'Generate the report first — there is no DOCX to overwrite.';
+      browserSaveMsg.style.color = 'var(--err-fg)';
+      return;
+    }
+    browserSaveMsg.textContent = 'Saving…';
+    browserSaveMsg.style.color = 'var(--text-2)';
+    saveBtn.disabled = true;
+    try {
+      const r = await fetch(`/api/reports/versions/${activeVid}/freedit/html`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'include',
+        body: JSON.stringify({html: editorHost.innerHTML}),
+      });
+      if (!r.ok){
+        let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){}
+        throw new Error(d);
+      }
+      browserSaveMsg.textContent = '✓ Saved. Reloading the page so the new DOCX shows up…';
+      browserSaveMsg.style.color = 'var(--ok-fg)';
+      setTimeout(() => location.reload(), 900);
+    } catch (err){
+      browserSaveMsg.textContent = 'Save failed: ' + (err.message || err);
+      browserSaveMsg.style.color = 'var(--err-fg)';
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+  reloadBtn.addEventListener('click', () => { if (activeVid) loadHtml(); });
+
+  // ----- Re-upload edited Word file -----
+  uploadBtn.addEventListener('click', async () => {
+    if (!activeVid) return;
+    const f = uploadInput.files && uploadInput.files[0];
+    if (!f){
+      uploadMsg.textContent = 'Pick a .docx first.';
+      uploadMsg.style.color = 'var(--err-fg)';
+      return;
+    }
+    uploadMsg.textContent = 'Uploading…';
+    uploadMsg.style.color = 'var(--text-2)';
+    uploadBtn.disabled = true;
+    try {
+      const fd = new FormData();
+      fd.append('file', f);
+      const r = await fetch(`/api/reports/versions/${activeVid}/freedit/upload`, {
+        method:'POST', body:fd, credentials:'include',
+      });
+      if (!r.ok){
+        let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){}
+        throw new Error(d);
+      }
+      uploadMsg.textContent = '✓ Replaced. Reloading…';
+      uploadMsg.style.color = 'var(--ok-fg)';
+      setTimeout(() => location.reload(), 900);
+    } catch (err){
+      uploadMsg.textContent = 'Failed: ' + (err.message || err);
+      uploadMsg.style.color = 'var(--err-fg)';
+    } finally {
+      uploadBtn.disabled = false;
+    }
+  });
+
+  function escHtml(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+})();
+</script>
+<!-- Live-presence avatar bar for the report detail page -->
+<script src="/static/js/presence.js" defer></script>
+
+<script nonce="{{ request.state.csp_nonce }}">
+// ============================================================
+// RFI: upload + list + inline preview + delete (detail page)
+// ============================================================
+(function(){
+  const list  = document.getElementById('rfi-list');
+  const count = document.getElementById('rfi-count');
+  const form  = document.getElementById('rfi-upload-form');
+  const msg   = document.getElementById('rfi-msg');
+
+  function fmtBytes(n){
+    if (!n) return '';
+    const k = 1024;
+    if (n < k)   return n + ' B';
+    if (n < k*k) return (n/k).toFixed(1) + ' KB';
+    return (n/(k*k)).toFixed(1) + ' MB';
+  }
+
+  function escH(s){
+    return (s == null ? '' : String(s)).replace(/[&<>"']/g,
+      c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  async function loadRFIs(){
+    list.innerHTML = '<li class="muted small">Loading…</li>';
+    try {
+      const r = await fetch(`/api/reports/${REPORT_ID}/rfi`, {credentials:'include'});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data  = await r.json();
+      const items = data.items || [];
+      count.textContent = items.length ? `(${items.length})` : '';
+      if (!items.length){
+        list.innerHTML = '<li class="muted small" style="padding:8px 0">No RFI documents uploaded yet.</li>';
+        return;
+      }
+      list.innerHTML = items.map(d => `
+        <li class="rfi-row">
+          <div>
+            <strong style="font-size:14px">${escH(d.original_name)}</strong>
+            <div class="muted small" style="margin-top:2px">${escH((d.uploaded_at||'').slice(0,16))} · ${escH(fmtBytes(d.size_bytes))}</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+            <button class="btn-hack-sm"
+                    onclick="previewRFI('${escH(d.id)}', '${escH(d.original_name||'')}')">
+              👁 Preview
+            </button>
+            <a class="btn-hack-sm"
+               style="text-decoration:none"
+               href="/api/reports/${REPORT_ID}/rfi/${escH(d.id)}/download">
+              ⬇ Download
+            </a>
+            <button class="btn-danger btn-sm"
+                    onclick="deleteRFI('${escH(d.id)}')">Remove</button>
+          </div>
+        </li>`).join('');
+    } catch (e){
+      list.innerHTML = `<li style="color:var(--err-fg)">${escH(e.message)}</li>`;
+    }
+  }
+
+  window.previewRFI = async function(id, filename){
+    const block  = document.getElementById('rfi-preview-block');
+    const frame  = document.getElementById('rfi-preview-frame');
+    const title  = document.getElementById('rfi-preview-title');
+    const status = document.getElementById('rfi-preview-status');
+    title.textContent  = filename || 'RFI document';
+    status.textContent = 'Loading preview…';
+    status.style.color = 'var(--text-2)';
+    block.hidden = false;
+    block.scrollIntoView({behavior:'smooth', block:'nearest'});
+    try {
+      const r = await fetch(`/api/reports/${REPORT_ID}/rfi/${id}/preview`,
+                             {credentials:'include'});
+      if (!r.ok){
+        let d = r.statusText;
+        try { d = (await r.json()).detail || d; } catch(_){}
+        if (r.status === 415){
+          status.textContent = d + ' Use the Download button instead.';
+          status.style.color = 'var(--warn-fg)';
+          frame.src = 'about:blank';
+          return;
+        }
+        throw new Error(d);
+      }
+      const blob = await r.blob();
+      const url  = URL.createObjectURL(blob);
+      frame.src  = url;
+      status.textContent = '✓ Preview rendered';
+      status.style.color = 'var(--ok-fg)';
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch(_){} }, 120000);
+    } catch (err){
+      status.textContent = 'Preview failed: ' + err.message;
+      status.style.color = 'var(--err-fg)';
+      frame.src = 'about:blank';
+    }
+  };
+
+  document.getElementById('rfi-preview-close').addEventListener('click', () => {
+    document.getElementById('rfi-preview-block').hidden = true;
+    document.getElementById('rfi-preview-frame').src = 'about:blank';
+  });
+
+  window.deleteRFI = async function(id){
+    if (!confirm('Remove this RFI document?')) return;
+    try {
+      const r = await fetch(`/api/reports/${REPORT_ID}/rfi/${id}`,
+                            {method:'DELETE', credentials:'include'});
+      if (!r.ok){ let d=r.statusText; try{d=(await r.json()).detail||d;}catch(_){} throw new Error(d); }
+      await loadRFIs();
+    } catch (e){ alert('Failed: ' + e.message); }
+  };
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    msg.textContent = 'Uploading…'; msg.style.color = 'var(--text-2)';
+    const fd = new FormData(form);
+    try {
+      const r = await fetch(`/api/reports/${REPORT_ID}/rfi`,
+                             {method:'POST', body:fd, credentials:'include'});
+      if (!r.ok){ let d=r.statusText; try{d=(await r.json()).detail||d;}catch(_){} throw new Error(d); }
+      form.reset();
+      msg.textContent = '✓ Uploaded'; msg.style.color = 'var(--ok-fg)';
+      await loadRFIs();
+    } catch (err){
+      msg.textContent = 'Failed: ' + err.message; msg.style.color = 'var(--err-fg)';
+    }
+  });
+
+  loadRFIs();
+})();
+
+// ===== Change report template (Web / API / Mobile / Cloud …) =====
+(function(){
+  const link = document.getElementById('tpl-change-link');
+  const sel  = document.getElementById('tpl-change-select');
+  if (!link || !sel) return;
+  link.addEventListener('click', async (e) => {
+    e.preventDefault();
+    if (!sel.options.length) {
+      try {
+        const r = await fetch('/api/templates', { credentials: 'include' });
+        const list = await r.json();
+        const cur = sel.dataset.current;
+        sel.innerHTML = (list || [])
+          .filter(t => t.is_active !== false)
+          .map(t => `<option value="${t.id}"${String(t.id) === String(cur) ? ' selected' : ''}>${t.name}</option>`)
+          .join('');
+      } catch (_) { alert('Could not load templates.'); return; }
+    }
+    link.hidden = true; sel.hidden = false; sel.focus();
+  });
+  sel.addEventListener('change', async () => {
+    const newId = sel.value;
+    const label = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+    if (String(newId) === String(sel.dataset.current)) { sel.hidden = true; link.hidden = false; return; }
+    if (!confirm('Change this report’s template to “' + label + '”?\n\nYour findings and details are kept — the new layout applies the next time you generate.')) {
+      sel.value = sel.dataset.current; sel.hidden = true; link.hidden = false; return;
+    }
+    try {
+      const r = await fetch('/api/reports/{{ report.id }}/template', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_id: parseInt(newId, 10) }),
+      });
+      if (!r.ok) { let d = r.status; try { d = (await r.json()).detail || d; } catch (_) {} alert('Failed to change template: ' + d); return; }
+      location.reload();
+    } catch (err) { alert('Failed to change template: ' + err.message); }
+  });
+})();
+</script>
+{% endblock %}

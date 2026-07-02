@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Toolkit — VibeDocs{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Toolkit</h1>
+    <p class="page-sub">
+      Consultant utilities — scan converters, parsers, and other helpers.
+      Drag a file onto a tool below to get a client-ready artifact back.
+    </p>
+  </div>
+</div>
+
+<div class="tk-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));
+                            gap:18px;margin-top:22px">
+  {% for t in tools %}
+  <a class="tk-card" href="/toolkit/{{ t.slug }}">
+    <div class="tk-card-h">
+      <span class="tk-icon" aria-hidden="true">{{ t.icon }}</span>
+      <span class="tk-tag">{{ t.tag }}</span>
+    </div>
+    <h2 class="tk-title">{{ t.title }}</h2>
+    <p class="tk-blurb">{{ t.blurb }}</p>
+    <div class="tk-cta">
+      Open tool →
+    </div>
+  </a>
+  {% endfor %}
+  {% if not tools %}
+  <p class="muted small" style="grid-column:1/-1;text-align:center;padding:40px 0">
+    No tools registered yet.
+  </p>
+  {% endif %}
+</div>
+
+<style>
+.tk-card {
+  display:flex; flex-direction:column; gap:10px;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:18px 18px 16px;
+  color:var(--text); text-decoration:none;
+  transition:transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+.tk-card:hover {
+  transform:translateY(-2px);
+  border-color:var(--accent-dark);
+  box-shadow:0 6px 20px rgba(124,92,252,.12);
+  text-decoration:none;
+}
+.tk-card-h { display:flex; align-items:center; justify-content:space-between; }
+.tk-icon   { font-size:28px; line-height:1 }
+.tk-tag    {
+  font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+  padding:3px 9px; border-radius:999px;
+  background:var(--accent-soft); color:var(--accent-dark);
+  border:1px solid var(--accent-line);
+  font-weight:600;
+}
+.tk-title { margin:4px 0 0; font-size:17px }
+.tk-blurb { margin:0; color:var(--text-2); font-size:13.5px; line-height:1.5 }
+.tk-cta   {
+  margin-top:auto; padding-top:8px;
+  font-weight:600; color:var(--accent-dark); font-size:13px;
+}
+</style>
+{% endblock %}

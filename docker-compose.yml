@@ -1,0 +1,104 @@
+# ============================================================================
+#  VibeDocs — a vibecoded pentest report generator by Brendon Teo
+#  Inspired by pwndoc (https://github.com/pwndoc/pwndoc)
+# ============================================================================
+#  One command to run everything:
+#      docker compose up -d --build
+#  then open http://localhost:8000  (first login: admin / change_me_now)
+#
+#  Windows users can just double-click START.cmd instead.
+#
+#  Three containers: Postgres (database), the app (FastAPI + LibreOffice for
+#  PDF export), and Mailpit (a local inbox so password-reset emails work out of
+#  the box at http://localhost:8025). On first boot the app auto-creates the
+#  database and seeds the admin user + starter report templates — no manual
+#  steps. Re-running is safe.
+# ============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: vibedocs_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vibedocs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vibedocs_local_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-vibedocs}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks: [vibedocs_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vibedocs}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:v1.20
+    container_name: vibedocs_mailpit
+    restart: unless-stopped
+    networks: [vibedocs_net]
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+  app:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: vibedocs:latest
+    container_name: vibedocs_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-vibedocs}:${POSTGRES_PASSWORD:-vibedocs_local_pw}@db:5432/${POSTGRES_DB:-vibedocs}
+      SECRET_KEY: ${SECRET_KEY:-change_me_to_a_long_random_secret_in_dotenv}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+      UPLOAD_DIR: /data/uploads
+      REPORT_DIR: /data/reports
+      # Word + tracker templates are generated / synthesised at runtime, so
+      # these point at the in-image (writable) copies.
+      TEMPLATE_DIR: /app/word_templates
+      TRACKER_TEMPLATES_DIR: /app/report-templates
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      ENV: ${ENV:-production}
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-vibedocs@localhost}
+    # Auto-seed (idempotent) then launch the API.
+    command:
+      - sh
+      - -c
+      - |
+        echo '[VibeDocs] Seeding database (first boot only, ~20s)...'
+        python -m app.seed || echo '[VibeDocs] seed warning (continuing)'
+        echo '[VibeDocs] Starting the app on http://localhost:8000'
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    volumes:
+      - app_uploads:/data/uploads
+      - app_reports:/data/reports
+    networks: [vibedocs_net]
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+networks:
+  vibedocs_net:
+    driver: bridge
+
+volumes:
+  db_data:
+  app_uploads:
+  app_reports:

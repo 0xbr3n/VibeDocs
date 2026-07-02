@@ -1,0 +1,54 @@
+.env
+.env.*
+!.env.example
+*.pyc
+__pycache__/
+*.egg-info/
+.venv/
+venv/
+.idea/
+.vscode/
+*.log
+node_modules/
+.DS_Store
+
+# Databases / runtime user data — NEVER publish.
+*.sqlite
+*.sqlite3
+*.db
+standalone_data/
+# Runtime dirs anchored to the REPO ROOT only (leading slash) so they don't
+# match source dirs like backend/app/templates/reports/ (UI templates).
+/data/
+/uploads/
+/reports/
+
+# Word templates + Excel trackers are NEVER committed. VibeDocs auto-generates
+# its own generic starter templates on first boot (gen_word_templates +
+# risk_register synthesise mode), so the repo must ship these dirs EMPTY
+# (.gitkeep only). This prevents any real/branded template (e.g. client or
+# third-party report templates) from ever being published again.
+word_templates/*.docx
+word_templates/*.xlsx
+report-templates/*.docx
+report-templates/*.xlsx
+backend/word_templates/*.docx
+backend/word_templates/*.xlsx
+# Defense-in-depth: catch app-generated templates written under ANY path
+# (e.g. backend/app/word_templates/ or a container-mount default) so a stray
+# TEMPLATE_DIR can never leak a .docx/.xlsx into the public repo.
+**/word_templates/*.docx
+**/word_templates/*.xlsx
+**/report-templates/*.docx
+**/report-templates/*.xlsx
+# (the .gitkeep marker in each dir is still tracked so the folder exists)
+
+# Template backups / scratch / dev artifacts.
+**/*.pre-*.docx
+**/*.pre-*.xlsx
+**/*.prev-*.xlsx
+**/*.bak
+**/*.backup
+~$*
+docs/_*.py
+docs/_*.jpg

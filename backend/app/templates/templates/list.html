@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Templates</h1>
+    <p class="page-sub">
+      {% if is_admin %}
+        System-wide report &amp; email templates plus your own custom
+        Word templates. Admin actions affect every consultant — make
+        them carefully.
+      {% else %}
+        Upload and manage client-specific Word templates with visual
+        placeholder marking.
+      {% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    <button class="btn-primary" onclick="document.getElementById('upload-modal').hidden=false">
+      + Upload New Template
+    </button>
+  </div>
+</div>
+
+{# ============================================================
+   Outer tab strip. Visible to admins only — for non-admins the page
+   shows just the Custom Templates content directly (no tabs).
+   The four tabs are: Custom Templates | Report Templates | Email
+   Templates | Placeholder Guide. The bottom three include the
+   `_admin_templates_block.html` partial which carries its own inner
+   tab strip (.adm-*) — but only one of the three admin panes is
+   visible at a time, so the inner switcher behaves as expected.
+   ============================================================ #}
+{% if is_admin %}
+<div class="tpl-outer-tabs" role="tablist" style="margin-top:18px;display:flex;gap:4px;
+            border-bottom:1px solid var(--border)">
+  <button class="tpl-outer-tab active" data-otab="custom"
+          role="tab" aria-selected="true">Custom Templates</button>
+  <button class="tpl-outer-tab" data-otab="admin"
+          role="tab" aria-selected="false">Admin · System Templates</button>
+</div>
+<style>
+.tpl-outer-tab{
+  background:transparent;border:0;cursor:pointer;padding:11px 18px;
+  font-size:14px;font-weight:500;color:var(--text-2);
+  border-bottom:2px solid transparent;border-radius:6px 6px 0 0;
+  transition:color .15s,border-color .15s,background .15s;
+}
+.tpl-outer-tab:hover{color:var(--text);background:var(--surface-2)}
+.tpl-outer-tab.active{
+  color:var(--accent-dark);border-bottom-color:var(--accent-dark);font-weight:600;
+}
+.tpl-outer-pane.is-hidden{display:none}
+</style>
+{% endif %}
+
+{# ============================================================
+   PANE 1 — Custom Templates (always rendered; only wrapped in a
+   pane container when admin so the outer tab JS can hide it).
+   ============================================================ #}
+<div class="tpl-outer-pane" id="opane-custom"
+     {% if not is_admin %}data-no-tabs="1"{% endif %}>
+<!-- Template Grid -->
+<div class="template-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;margin-top:24px">
+  <!-- Populated by JavaScript -->
+</div>
+
+<!-- Upload Modal -->
+<div id="upload-modal" class="modal" hidden>
+  <div class="modal-content" style="max-width:600px">
+    <div class="modal-header">
+      <h2>Upload Custom Template</h2>
+      <button class="close-btn" onclick="document.getElementById('upload-modal').hidden=true">×</button>
+    </div>
+    
+    {# Placeholder examples below are written with HTML entities
+       (curly-brace numeric refs) so Jinja2 rendering this page does
+       NOT try to substitute them, the browser displays them as
+       literal double-curly text, and users who copy a line from this
+       list get exactly the characters they need to paste into Word —
+       no `raw` wrappers in the clipboard. Earlier versions wrapped
+       each example in raw / endraw, which users carried into their
+       .docx via copy-paste; those wrappers then prevented the
+       placeholders inside from being substituted at render time. #}
+    <div class="tpl-instructions">
+      <h3 style="margin:0 0 8px 0;color:var(--accent-dark, #4ade80)">📝 Template Instructions</h3>
+      <p style="margin:0 0 8px 0;font-size:14px">
+        Open your Word document and drop these placeholders wherever you want
+        the data to appear. The generator replaces each one when a report is built.
+      </p>
+      <p style="margin:0 0 12px;font-size:13px;color:var(--warn-fg);
+                padding:8px 10px;background:var(--warn-bg);border-radius:6px">
+        ⚠ <strong>Copy only the green text</strong> — just the
+        <code>&#123;&#123; … &#125;&#125;</code> part. Do NOT include any
+        <code>&#123;% raw %&#125;</code> wrappers in your template; those
+        prevent the placeholder from being substituted at render time.
+      </p>
+
+      <p style="margin:10px 0 4px;font-size:13px;font-weight:600">Project metadata</p>
+      <ul style="margin:0;padding-left:20px;font-size:13.5px">
+        <li><code class="tpl-ph">&#123;&#123; project.client_name &#125;&#125;</code> — Client / company name</li>
+        <li><code class="tpl-ph">&#123;&#123; project.name &#125;&#125;</code> — Project name</li>
+        <li><code class="tpl-ph">&#123;&#123; project.testing_window &#125;&#125;</code> — Test dates (e.g. <em>2026-05-01 to 2026-05-10</em>)</li>
+        <li><code class="tpl-ph">&#123;&#123; project.scope_description &#125;&#125;</code> — Scope details (free text)</li>
+        <li><code class="tpl-ph">&#123;&#123; project.sector &#125;&#125;</code> — Sector (Finance, Retail, Healthcare, etc.)</li>
+      </ul>
+
+      <p style="margin:10px 0 4px;font-size:13px;font-weight:600">Report metadata</p>
+      <ul style="margin:0;padding-left:20px;font-size:13.5px">
+        <li><code class="tpl-ph">&#123;&#123; report.name &#125;&#125;</code> — Report name</li>
+        <li><code class="tpl-ph">&#123;&#123; report.version &#125;&#125;</code> — Version (e.g. <em>0.1</em>)</li>
+        <li><code class="tpl-ph">&#123;&#123; generated_at &#125;&#125;</code> — Build timestamp (UTC)</li>
+      </ul>
+
+      <p style="margin:10px 0 4px;font-size:13px;font-weight:600">Master prose sections (edit under <a href="/templates" class="link">Templates → Master prose</a>)</p>
+      <ul style="margin:0;padding-left:20px;font-size:13.5px">
+        <li><code class="tpl-ph">&#123;&#123; sections.executive_summary &#125;&#125;</code> — Executive summary</li>
+        <li><code class="tpl-ph">&#123;&#123; sections.methodology &#125;&#125;</code> — Testing methodology</li>
+        <li><code class="tpl-ph">&#123;&#123; sections.scope_disclaimer &#125;&#125;</code> — Scope / disclaimer</li>
+      </ul>
+
+      <p style="margin:10px 0 4px;font-size:13px;font-weight:600">Findings (rows + per-finding detail)</p>
+      <ul style="margin:0;padding-left:20px;font-size:13.5px">
+        <li><code class="tpl-ph">&#123;&#123; total_findings &#125;&#125;</code> — Total finding count</li>
+        <li><code class="tpl-ph">&#123;&#123; severity_counts.Critical &#125;&#125;</code>, <code class="tpl-ph">&#123;&#123; severity_counts.High &#125;&#125;</code>, …, <code class="tpl-ph">&#123;&#123; severity_counts.Informational &#125;&#125;</code> — Counts per severity</li>
+        <li><code class="tpl-ph">&#123;&#123; severity_chart &#125;&#125;</code> — Auto-generated severity bar chart (image)</li>
+        <li>
+          Findings table row loop (place inside the table row):<br>
+          <code class="tpl-ph tpl-ph-block">&#123;%tr for f in findings %&#125;
+&#123;&#123; loop.index &#125;&#125; | &#123;&#123; f.title &#125;&#125; | &#123;&#123; f.severity &#125;&#125; | &#123;&#123; f.cvss_score &#125;&#125; | &#123;&#123; f.status &#125;&#125;
+&#123;%tr endfor %&#125;</code>
+        </li>
+        <li>
+          Per-finding detail paragraph loop:<br>
+          <code class="tpl-ph tpl-ph-block">&#123;%p for f in findings %&#125;
+Finding &#123;&#123; loop.index &#125;&#125;: &#123;&#123; f.title &#125;&#125;
+Severity: &#123;&#123; f.severity &#125;&#125; (&#123;&#123; f.cvss_score &#125;&#125;)
+Affected: &#123;&#123; f.affected_asset &#125;&#125;
+&#123;&#123; f.description &#125;&#125; &#123;&#123; f.impact &#125;&#125; &#123;&#123; f.remediation &#125;&#125;
+&#123;%p endfor %&#125;</code>
+        </li>
+      </ul>
+
+      <p style="margin:10px 0 0;font-size:13px;color:var(--text-2)">
+        ✓ The generator uses Jinja2 syntax — double curly braces wrap each placeholder.<br>
+        ✓ Place them in headers, body, tables, or footers — all are scanned.<br>
+        ✓ Required at minimum: <code class="tpl-ph">&#123;&#123; project.client_name &#125;&#125;</code> and the findings row loop.<br>
+        ✓ Missing optional placeholders fall back to defaults — they won't break the build.<br>
+        ✓ If a placeholder you typed renders as literal text instead of
+          being substituted, double-check spelling against the list above,
+          and make sure you didn't bring any <code>&#123;% raw %&#125;</code>
+          wrappers along with you.
+      </p>
+    </div>
+    
+    <form id="upload-form" enctype="multipart/form-data" style="padding:16px">
+      <label>
+        Template Name
+        <input name="name" required placeholder="e.g., Acme Corp Web VAPT Template">
+      </label>
+      <label>
+        Description (optional)
+        <textarea name="description" rows="2" placeholder="Brief description of this template"></textarea>
+      </label>
+      <label>
+        Template Type
+        <select name="template_type" required>
+          <option value="web_vapt">Web Application VAPT</option>
+          <option value="mobile_vapt">Mobile Application VAPT</option>
+          <option value="network_vapt">Network/Infrastructure VAPT</option>
+          <option value="wifi_pt">WiFi Penetration Test</option>
+          <option value="source_code_review">Source Code Review</option>
+          <option value="cloud_vapt">Cloud VAPT</option>
+          <option value="cloud_pt">Cloud Penetration Test</option>
+          <option value="kiosk_pt">Kiosk Penetration Test</option>
+          <option value="api_vapt">API Security Assessment</option>
+          <option value="iot_vapt">IoT Security Assessment</option>
+        </select>
+      </label>
+      <label>
+        Word Template File (.docx)
+        <input type="file" name="file" accept=".docx" required>
+      </label>
+      <div class="actions" style="margin-top:16px">
+        <button type="submit" class="btn-primary">Upload & Edit Placeholders</button>
+        <button type="button" class="btn-secondary" onclick="document.getElementById('upload-modal').hidden=true">Cancel</button>
+      </div>
+      <p id="upload-status" class="muted small" style="margin-top:8px"></p>
+    </form>
+  </div>
+</div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+// Friendly labels + classes for the status pill. Centralised so card +
+// action row pick the same wording. Approved gets the VibeDocs-green
+// accent, pending review gets amber, draft stays muted, rejected is red.
+const TPL_STATUS_META = {
+  draft:          {label: 'Draft',          cls: 'badge-secondary', cardCls: 'tpl-draft'},
+  pending_review: {label: 'Pending review', cls: 'badge-warning',   cardCls: 'tpl-pending'},
+  approved:       {label: 'Approved',       cls: 'badge-success',   cardCls: 'tpl-approved'},
+  rejected:       {label: 'Rejected',       cls: 'badge-danger',    cardCls: 'tpl-rejected'},
+};
+
+// Human-readable template-type names so consultants don't have to decode
+// snake_case codes. Falls back to the raw code for any new type we
+// haven't taught the UI about yet.
+const TPL_TYPE_LABELS = {
+  web_vapt:           'Web Application VAPT',
+  mobile_vapt:        'Mobile Application VAPT',
+  network_vapt:       'Network / Infrastructure VAPT',
+  wifi_pt:            'Wi-Fi Penetration Test',
+  source_code_review: 'Source Code Review',
+  cloud_vapt:         'Cloud VAPT',
+  cloud_pt:           'Cloud Penetration Test',
+  kiosk_pt:           'Kiosk Penetration Test',
+  api_vapt:           'API Security Assessment',
+  iot_vapt:           'IoT Security Assessment',
+};
+
+// Deterministic avatar colour from a username — same input always maps
+// to the same colour so when several consultants upload similarly-named
+// templates the user can tell the copies apart at a glance.
+const AVATAR_PALETTE = [
+  '#7C5CFC', '#10b981', '#0ea5e9', '#3b82f6', '#6366f1',
+  '#a855f7', '#ec4899', '#f43f5e', '#f97316', '#eab308',
+  '#14b8a6', '#84cc16',
+];
+function avatarColor(seed){
+  const s = String(seed || '');
+  let h = 0;
+  for (let i = 0; i < s.length; i++){
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return AVATAR_PALETTE[Math.abs(h) % AVATAR_PALETTE.length];
+}
+function avatarInitials(name){
+  const s = String(name || '?').trim();
+  if (!s) return '?';
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+function escapeHtml(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function formatDate(iso){
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString(undefined,
+    {year:'numeric', month:'short', day:'numeric'}); }
+  catch(_) { return iso; }
+}
+
+async function loadTemplates() {
+  const resp = await fetch('/api/templates/custom/', {credentials: 'include'});
+  const templates = await resp.json();
+
+  const grid = document.querySelector('.template-grid');
+  if (templates.length === 0) {
+    grid.innerHTML = '<p class="muted">No custom templates yet. Upload one to get started.</p>';
+    return;
+  }
+
+  grid.innerHTML = templates.map(t => {
+    const status      = t.status || 'draft';
+    const meta        = TPL_STATUS_META[status] || TPL_STATUS_META.draft;
+    const typeLabel   = TPL_TYPE_LABELS[t.template_type] || t.template_type || 'Unknown';
+    const phCount     = (t.placeholder_count != null)
+                          ? t.placeholder_count
+                          : (t.placeholder_map ? Object.keys(t.placeholder_map).length : 0);
+
+    // Uploader chip. The backend supplies a display name + role; if
+    // anything is missing we fall back gracefully so old API rows that
+    // pre-date the richer payload still render.
+    const upName  = t.uploaded_by_full_name || t.uploaded_by || 'Unknown';
+    const upRole  = t.uploaded_by_role || '';
+    const isMine  = !!t.is_mine;
+    const avatarBg = avatarColor(t.uploaded_by || upName);
+    const initials = avatarInitials(upName);
+    const uploaderChip = `
+      <span class="tpl-uploader ${isMine ? 'tpl-uploader-me' : ''}"
+            title="Uploaded by ${escapeHtml(upName)}${upRole ? ' · ' + escapeHtml(upRole) : ''}${isMine ? ' (you)' : ''}">
+        <span class="tpl-avatar" style="background:${avatarBg}">${escapeHtml(initials)}</span>
+        <span class="tpl-uploader-name">${escapeHtml(upName)}${isMine ? ' · you' : ''}</span>
+        ${upRole ? `<span class="tpl-uploader-role">${escapeHtml(upRole)}</span>` : ''}
+      </span>`;
+
+    // Placeholder count chip — accent green when ≥1 are marked, amber
+    // warning when none are. Acts as the at-a-glance "is this usable yet?"
+    // indicator since an unmarked template can't be rendered.
+    const phChip = phCount > 0
+      ? `<span class="tpl-chip tpl-chip-accent" title="Placeholders auto-detected from the .docx">
+           📌 ${phCount} placeholder${phCount === 1 ? '' : 's'}
+         </span>`
+      : `<span class="tpl-chip tpl-chip-warn" title="No placeholders detected — edit the .docx to add some">
+           ⚠ No placeholders yet
+         </span>`;
+
+    const description = t.description
+      ? `<p class="small muted">${escapeHtml(t.description)}</p>`
+      : '';
+
+    // Only the owner / admin should see Submit + Delete on someone
+    // else's row. The API already enforces this; the UI mirrors the
+    // backend rule so users don't see buttons that will 403. We can't
+    // detect "admin" from this payload alone, so we show the buttons
+    // for everyone and let the backend reject — the hint is the chip.
+    const submitBtn = (status === 'draft')
+      ? `<button class="btn-primary btn-sm" onclick="submitForReview(${t.id})">Submit for Review</button>`
+      : '';
+
+    return `
+      <div class="tpl-card ${meta.cardCls}">
+        <div class="tpl-h">
+          <div class="tpl-title-wrap">
+            <strong>${escapeHtml(t.name)}</strong>
+            <span class="tpl-sub">${escapeHtml(typeLabel)}</span>
+          </div>
+          <span class="badge ${meta.cls}">${meta.label}</span>
+        </div>
+        <div class="tpl-body">
+          ${description}
+          <div class="tpl-meta-row">
+            ${uploaderChip}
+            ${phChip}
+            <span class="tpl-chip" title="Uploaded">📅 ${escapeHtml(formatDate(t.created_at))}</span>
+            ${t.is_public ? '<span class="tpl-chip tpl-chip-accent" title="Visible to all consultants">🌐 Team-wide</span>' : ''}
+          </div>
+        </div>
+        <div class="actions">
+          <a href="/templates/edit/${t.id}" class="btn-secondary btn-sm">Edit Placeholders</a>
+          ${submitBtn}
+          <button class="btn-danger btn-sm" onclick="deleteTemplate(${t.id})">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Handle upload
+document.getElementById('upload-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const status = document.getElementById('upload-status');
+  status.textContent = 'Uploading...';
+  
+  const fd = new FormData(e.target);
+  try {
+    const resp = await fetch('/api/templates/custom/upload', {
+      method: 'POST',
+      body: fd,
+      credentials: 'include'
+    });
+    
+    if (!resp.ok) {
+      const err = await resp.json();
+      status.textContent = 'Error: ' + (err.detail || resp.status);
+      return;
+    }
+    
+    const data = await resp.json();
+    status.textContent = 'Uploaded! Redirecting to editor...';
+    setTimeout(() => {
+      window.location = `/templates/edit/${data.template_id}`;
+    }, 1000);
+  } catch (err) {
+    status.textContent = 'Error: ' + err.message;
+  }
+});
+
+async function submitForReview(id) {
+  if (!confirm('Submit this template for admin review? Once approved, it will be available to all consultants.')) return;
+  await fetch(`/api/templates/custom/${id}/submit`, {method: 'POST', credentials: 'include'});
+  loadTemplates();
+}
+
+async function deleteTemplate(id) {
+  if (!confirm('Delete this template permanently?')) return;
+  await fetch(`/api/templates/custom/${id}`, {method: 'DELETE', credentials: 'include'});
+  loadTemplates();
+}
+
+// Initial load
+loadTemplates();
+
+{% if is_admin %}
+// ============================================================
+// Outer tab strip — only present for admins. Toggles between the
+// Custom Templates pane (above) and the Admin section pane below.
+// Inner tabs inside the Admin block (.adm-tab) are managed by the
+// included partial and operate independently.
+//
+// IMPORTANT: this <script nonce="{{ request.state.csp_nonce }}"> block runs INSIDE the opane-custom div,
+// before the browser has parsed the opane-admin div that lives later
+// on the page. We therefore CANNOT capture `panes.admin` at IIFE
+// load time — `getElementById("opane-admin")` would return null and
+// the click handler's `if (el)` guard would silently skip the
+// hide / show toggle (admin tab gets the active class, but the pane
+// stays hidden — which is exactly the bug consultants kept hitting).
+// Look the elements up LAZILY inside the click handler so they
+// resolve after the full document has parsed.
+// ============================================================
+(function wireOuterTabs(){
+  const tabs = document.querySelectorAll(".tpl-outer-tab");
+  for (const t of tabs){
+    t.addEventListener("click", () => {
+      tabs.forEach(x => {
+        x.classList.toggle("active", x === t);
+        x.setAttribute("aria-selected", x === t ? "true" : "false");
+      });
+      // Lazy element lookup — runs on every click after the DOM is
+      // fully parsed, so opane-admin (which is emitted AFTER this
+      // <script nonce="{{ request.state.csp_nonce }}"> in the page source) is guaranteed to be findable.
+      const panes = {
+        custom: document.getElementById("opane-custom"),
+        admin:  document.getElementById("opane-admin"),
+      };
+      for (const [k, el] of Object.entries(panes)){
+        if (el) el.classList.toggle("is-hidden", k !== t.dataset.otab);
+      }
+    });
+  }
+})();
+{% endif %}
+</script>
+</div> {# /opane-custom — wraps every piece of the Custom Templates
+          tab (header, grid, upload modal, scripts). For non-admins
+          this is the only pane on the page; for admins it's pane #1
+          of two. #}
+{% if is_admin %}
+{# ============================================================
+   PANE 2 — Admin section. Wrapped in `.tpl-outer-pane` so the outer
+   tab JS can hide it. Hidden by default — the Custom Templates pane
+   is the landing tab. Includes the admin block partial which carries
+   its own three inner tabs (Report / Email / Placeholder Guide).
+   ============================================================ #}
+<div class="tpl-outer-pane is-hidden" id="opane-admin">
+  {% include "admin/_admin_templates_block.html" %}
+</div>
+{% endif %}
+{% endblock %}

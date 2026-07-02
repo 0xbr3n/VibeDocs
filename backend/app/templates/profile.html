@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <h1>My Profile</h1>
+</div>
+
+<div class="card" style="max-width:600px;margin:24px 0">
+  <div class="card-h">
+    <h2>User information</h2>
+    <button id="profile-edit-btn" class="btn-secondary btn-sm">✎ Edit</button>
+  </div>
+  <div id="profile-view" style="padding:20px">
+    <p><strong>Username:</strong> <span id="pv-username">{{ user.username }}</span></p>
+    <p><strong>Full name:</strong> <span id="pv-full-name">{{ user.full_name or 'Not set' }}</span></p>
+    <p><strong>Email:</strong> <span id="pv-email">{{ user.email or 'Not set' }}</span></p>
+    <p><strong>Role:</strong> <span class="badge">{{ user.role.value }}</span>
+       <span class="muted small" style="margin-left:6px">(admin-managed)</span></p>
+    <p><strong>Account status:</strong> <span class="badge badge-success">Active</span></p>
+  </div>
+  <form id="profile-edit-form" style="padding:20px;display:none">
+    <label style="display:block;margin-bottom:12px">
+      <span style="font-weight:600">Username</span>
+      <input id="pe-username" type="text" value="{{ user.username }}"
+             pattern="[A-Za-z0-9._\-]{3,64}" required
+             style="width:100%;margin-top:4px;padding:8px 10px;
+                    background:var(--surface-2);border:1px solid var(--border);
+                    color:var(--text);border-radius:6px">
+      <span class="muted small">Letters, digits, dot, dash, underscore. 3-64 chars.</span>
+    </label>
+    <label style="display:block;margin-bottom:12px">
+      <span style="font-weight:600">Full name</span>
+      <input id="pe-full-name" type="text" value="{{ user.full_name or '' }}"
+             style="width:100%;margin-top:4px;padding:8px 10px;
+                    background:var(--surface-2);border:1px solid var(--border);
+                    color:var(--text);border-radius:6px">
+    </label>
+    <label style="display:block;margin-bottom:12px">
+      <span style="font-weight:600">Email</span>
+      <input id="pe-email" type="email" value="{{ user.email or '' }}" required
+             style="width:100%;margin-top:4px;padding:8px 10px;
+                    background:var(--surface-2);border:1px solid var(--border);
+                    color:var(--text);border-radius:6px">
+      <span class="muted small">Used for password resets + collaboration notifications.</span>
+    </label>
+    <div class="actions">
+      <button type="submit" class="btn-primary">Save changes</button>
+      <button type="button" id="pe-cancel" class="btn-secondary">Cancel</button>
+    </div>
+    <p id="pe-msg" class="small" style="margin-top:8px;min-height:1.4em"></p>
+  </form>
+</div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+(function(){
+  const editBtn = document.getElementById("profile-edit-btn");
+  const view = document.getElementById("profile-view");
+  const form = document.getElementById("profile-edit-form");
+  const cancel = document.getElementById("pe-cancel");
+  const msg = document.getElementById("pe-msg");
+  if (!editBtn) return;
+
+  editBtn.addEventListener("click", () => {
+    view.style.display = "none";
+    form.style.display = "block";
+    msg.textContent = "";
+  });
+  cancel.addEventListener("click", () => {
+    form.style.display = "none";
+    view.style.display = "block";
+  });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    msg.textContent = "Saving…";
+    msg.style.color = "var(--text-2)";
+    try {
+      const r = await fetch("/api/auth/me/profile", {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username:  document.getElementById("pe-username").value.trim(),
+          full_name: document.getElementById("pe-full-name").value.trim(),
+          email:     document.getElementById("pe-email").value.trim(),
+        }),
+      });
+      if (!r.ok){
+        let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){}
+        throw new Error(d);
+      }
+      const data = await r.json();
+      document.getElementById("pv-username").textContent  = data.user.username;
+      document.getElementById("pv-full-name").textContent = data.user.full_name || "Not set";
+      document.getElementById("pv-email").textContent     = data.user.email     || "Not set";
+      msg.textContent = data.changes.length
+        ? "✓ Saved (" + data.changes.join(", ") + ")"
+        : "✓ No changes";
+      msg.style.color = "var(--ok-fg)";
+      setTimeout(() => {
+        form.style.display = "none";
+        view.style.display = "block";
+        msg.textContent = "";
+      }, 900);
+    } catch (err){
+      msg.textContent = "Failed: " + err.message;
+      msg.style.color = "var(--err-fg)";
+    }
+  });
+})();
+</script>
+
+<div class="actions">
+  <a href="/profile/password" class="btn-primary">Change Password</a>
+  <a href="/profile/mfa" class="btn-secondary">MFA Settings</a>
+</div>
+
+<div class="card" style="max-width:600px;margin:24px 0">
+  <div class="card-h"><h2>UI preferences</h2></div>
+  <div style="padding:20px">
+    <p class="muted small" style="margin:0 0 14px">
+      Toggle UI features on or off for this account. Changes take
+      effect on the next page load.
+    </p>
+    <label style="display:flex;align-items:center;gap:12px;padding:12px 14px;
+                  background:var(--surface-2);border:1px solid var(--border);
+                  border-radius:8px;cursor:pointer">
+      <input type="checkbox" id="pref-notes-widget"
+             {% if (user.notes_widget_enabled if user.notes_widget_enabled is not none else True) %}checked{% endif %}
+             style="width:18px;height:18px;accent-color:var(--accent-dark);cursor:pointer">
+      <span style="flex:1">
+        <strong>Show the floating notes scratchpad</strong>
+        <span class="muted small" style="display:block">
+          The terminal-style pill at the bottom-right of every page.
+          Off = no widget on screen, no DOM, no polling. Re-enable
+          here any time.
+        </span>
+      </span>
+      <span id="pref-notes-state" class="badge"
+            style="font-size:11px;padding:3px 9px;border-radius:999px">Loading…</span>
+    </label>
+    <p id="pref-notes-msg" class="small" style="margin:8px 0 0;min-height:1.4em"></p>
+  </div>
+</div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+(function(){
+  const cb = document.getElementById("pref-notes-widget");
+  const stateEl = document.getElementById("pref-notes-state");
+  const msg = document.getElementById("pref-notes-msg");
+  if (!cb) return;
+  function paint(on){
+    stateEl.textContent = on ? "ON" : "OFF";
+    stateEl.style.background = on ? "var(--ok-bg)"  : "var(--err-bg)";
+    stateEl.style.color      = on ? "var(--ok-fg)"  : "var(--err-fg)";
+    stateEl.style.border     = "1px solid " + (on ? "var(--ok-line, #86efac)" : "var(--err-line, #fecaca)");
+  }
+  paint(cb.checked);
+  cb.addEventListener("change", async () => {
+    const target = cb.checked;
+    cb.disabled = true;
+    msg.textContent = "Saving…";
+    msg.style.color = "var(--text-2)";
+    try {
+      const r = await fetch("/api/auth/me/preferences", {
+        method:"PATCH", credentials:"include",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ notes_widget_enabled: target }),
+      });
+      if (!r.ok){
+        let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){}
+        throw new Error(d);
+      }
+      const data = await r.json();
+      cb.checked = !!data.notes_widget_enabled;
+      paint(cb.checked);
+      msg.textContent = cb.checked
+        ? "✓ Notes widget enabled — refresh to see it."
+        : "✓ Notes widget hidden — refresh to remove it from this page.";
+      msg.style.color = "var(--ok-fg)";
+    } catch (err){
+      cb.checked = !target;
+      paint(cb.checked);
+      msg.textContent = "Failed: " + err.message;
+      msg.style.color = "var(--err-fg)";
+    } finally {
+      cb.disabled = false;
+    }
+  });
+})();
+</script>
+
+<div class="card" style="max-width:600px;margin:24px 0">
+  <div class="card-h"><h2>Email notifications</h2></div>
+  <div style="padding:20px">
+    <p class="muted small" style="margin:0 0 14px">
+      Push notifications you receive by email — when you're added to a
+      project, given access to a report, when a reviewer approves your
+      report, your library finding, or your custom template. Turn this off
+      to silence those. Security emails (password reset, password change
+      confirmations) always come through regardless of this setting.
+    </p>
+    <label class="prefs-toggle"
+           style="display:flex;align-items:center;gap:12px;padding:12px 14px;
+                  background:var(--surface-2);border:1px solid var(--border);
+                  border-radius:8px;cursor:pointer">
+      <input type="checkbox" id="pref-email-on"
+             {% if (user.notifications_email_enabled if user.notifications_email_enabled is not none else True) %}checked{% endif %}
+             style="width:18px;height:18px;accent-color:var(--accent-dark);cursor:pointer">
+      <span style="flex:1">
+        <strong>Receive collaboration emails</strong>
+        <span class="muted small" style="display:block">
+          Off = no project / report / approval emails sent to <code>{{ user.email or 'this account' }}</code>.
+        </span>
+      </span>
+      <span id="pref-email-state" class="badge"
+            style="font-size:11px;padding:3px 9px;border-radius:999px">Loading…</span>
+    </label>
+    <p id="pref-email-msg" class="small" style="margin:8px 0 0;min-height:1.4em"></p>
+  </div>
+</div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+(function(){
+  const cb     = document.getElementById("pref-email-on");
+  const stateEl = document.getElementById("pref-email-state");
+  const msg    = document.getElementById("pref-email-msg");
+  if (!cb) return;
+
+  function paintState(on){
+    stateEl.textContent = on ? "ON" : "OFF";
+    stateEl.style.background = on ? "var(--ok-bg)"  : "var(--err-bg)";
+    stateEl.style.color      = on ? "var(--ok-fg)"  : "var(--err-fg)";
+    stateEl.style.border     = "1px solid " + (on ? "var(--ok-line, #86efac)" : "var(--err-line, #fecaca)");
+  }
+  paintState(cb.checked);
+
+  cb.addEventListener("change", async () => {
+    const target = cb.checked;
+    cb.disabled = true;
+    msg.textContent = "Saving…";
+    msg.style.color = "var(--text-2)";
+    try {
+      const r = await fetch("/api/auth/me/preferences", {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifications_email_enabled: target }),
+      });
+      if (!r.ok){
+        let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){}
+        throw new Error(d);
+      }
+      const data = await r.json();
+      cb.checked = !!data.notifications_email_enabled;
+      paintState(cb.checked);
+      msg.textContent = cb.checked
+        ? "✓ Email notifications enabled."
+        : "✓ Email notifications muted — only security emails will be sent.";
+      msg.style.color = "var(--ok-fg)";
+    } catch (err){
+      cb.checked = !target;
+      paintState(cb.checked);
+      msg.textContent = "Failed: " + err.message;
+      msg.style.color = "var(--err-fg)";
+    } finally {
+      cb.disabled = false;
+    }
+  });
+})();
+</script>
+
+<div class="card" style="max-width:600px;margin:24px 0">
+  <div class="card-h"><h2>Background image</h2></div>
+  <div style="padding:20px">
+    <p class="muted small" style="margin:0 0 12px">
+      Pick a wallpaper for your VAPT Reporter sessions. PNG, JPG, WebP, or
+      GIF up to 6 MB. The image is overlaid with a translucent gradient so
+      foreground text stays readable.
+    </p>
+    {% if user.background_path %}
+    <div style="margin:0 0 10px">
+      <img src="/api/auth/me/background?v={{ user.id }}"
+           alt="Current background"
+           style="max-width:100%;max-height:160px;border-radius:8px;
+                  border:1px solid var(--border);object-fit:cover">
+    </div>
+    {% endif %}
+    <form id="bg-form" enctype="multipart/form-data" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+      <label style="flex:1;min-width:240px;margin:0">
+        New background image
+        <input type="file" name="file" accept=".png,.jpg,.jpeg,.webp,.gif" required>
+      </label>
+      <button class="btn-primary" type="submit">Upload</button>
+      {% if user.background_path %}
+      <button class="btn-danger" type="button" id="bg-clear">Remove</button>
+      {% endif %}
+    </form>
+    <p id="bg-msg" class="small" style="margin:8px 0 0;min-height:1.4em"></p>
+  </div>
+</div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+const bgForm = document.getElementById('bg-form');
+const bgMsg = document.getElementById('bg-msg');
+bgForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  bgMsg.textContent = 'Uploading…';
+  bgMsg.style.color = 'var(--text-2)';
+  try {
+    const r = await fetch('/api/auth/me/background-upload',
+                          {method:'POST', body:new FormData(bgForm), credentials:'include'});
+    if (!r.ok){
+      let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){}
+      throw new Error(d);
+    }
+    bgMsg.textContent = '✓ Uploaded. Refresh to apply.';
+    bgMsg.style.color = 'var(--ok-fg)';
+    setTimeout(() => location.reload(), 700);
+  } catch (err){
+    bgMsg.textContent = 'Failed: ' + err.message;
+    bgMsg.style.color = 'var(--err-fg)';
+  }
+});
+const clearBtn = document.getElementById('bg-clear');
+if (clearBtn){
+  clearBtn.addEventListener('click', async () => {
+    if (!confirm('Remove your background image?')) return;
+    try {
+      const r = await fetch('/api/auth/me/background',
+                             {method:'DELETE', credentials:'include'});
+      if (!r.ok){ let d = r.statusText; try { d = (await r.json()).detail || d; } catch(_){} throw new Error(d); }
+      location.reload();
+    } catch (e){ alert('Failed: ' + e.message); }
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Review Template</h1>
+    <p class="page-sub">Approve or reject this submitted Word template</p>
+  </div>
+  <div class="actions">
+    <a href="/templates" class="btn-secondary">← Back to Templates</a>
+  </div>
+</div>
+
+<div class="card" style="max-width:720px">
+  <div class="card-body">
+    <table class="kv">
+      <tr><th>Name</th><td>{{ template.name }}</td></tr>
+      <tr><th>Description</th><td>{{ template.description or "—" }}</td></tr>
+      <tr><th>Type</th><td>{{ template.template_type or "—" }}</td></tr>
+      <tr><th>File</th><td>{{ template.docx_filename or "—" }}</td></tr>
+      <tr><th>Status</th>
+        <td><span class="badge">{{ template.status.value if template.status else "—" }}</span></td></tr>
+      <tr><th>Submitted</th>
+        <td>{{ template.created_at.strftime("%Y-%m-%d %H:%M") if template.created_at else "—" }}</td></tr>
+    </table>
+
+    <div id="review-msg" class="muted small" style="margin:10px 0"></div>
+
+    <label style="display:block;margin:8px 0">
+      Decision notes (optional — shown to the submitter on rejection)
+      <textarea id="review-notes" rows="3" style="width:100%"></textarea>
+    </label>
+
+    <div class="actions" style="gap:10px">
+      <button class="btn-success" id="approve-btn"
+              data-id="{{ template.id }}">✓ Approve</button>
+      <button class="btn-danger" id="reject-btn"
+              data-id="{{ template.id }}">✗ Reject</button>
+    </div>
+    <p class="muted small" style="margin-top:8px">
+      Approve makes the template public and usable by everyone. Reject returns
+      it to the submitter for edits.
+    </p>
+  </div>
+</div>
+
+<script>
+const TID = {{ template.id }};
+async function review(action) {
+  const msg = document.getElementById("review-msg");
+  msg.textContent = action === "approve" ? "Approving…" : "Rejecting…";
+  const fd = new FormData();
+  fd.append("action", action);
+  fd.append("notes", document.getElementById("review-notes").value || "");
+  try {
+    const r = await fetch(`/api/templates/custom/${TID}/review`,
+                          { method: "POST", body: fd, credentials: "include" });
+    if (!r.ok) {
+      const t = await r.text();
+      msg.textContent = "Failed (" + r.status + "): " + t.slice(0, 200);
+      return;
+    }
+    msg.textContent = "Done. Redirecting…";
+    setTimeout(() => { window.location.href = "/templates"; }, 800);
+  } catch (e) {
+    msg.textContent = "Error: " + (e.message || e);
+  }
+}
+document.getElementById("approve-btn").addEventListener("click", () => review("approve"));
+document.getElementById("reject-btn").addEventListener("click", () => review("reject"));
+</script>
+{% endblock %}

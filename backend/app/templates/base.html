@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#7C5CFC">
+  <title>{% block title %}VibeDocs — A vibecoded report generator{% endblock %}</title>
+  <!-- Cache-bust query string bumped whenever style.css ships a change
+       that interacts with layout (topbar z-index, dropdown background,
+       new component styles). Saves users a hard refresh. -->
+  <link rel="stylesheet" href="/static/css/style.css?v=20260612b">
+  <script src="/static/js/htmx.min.js?v=2.0.3" defer></script>
+  <script nonce="{{ request.state.csp_nonce }}">
+    // Apply saved theme as early as possible to avoid a flash of the wrong colors.
+    // Five built-in themes; the topbar button cycles through them.
+    window.VAPT_THEMES = ['light','dark','midnight','dracula','solarized','forest'];
+    (function(){
+      try {
+        var t = localStorage.getItem('vapt_theme') || 'dark';
+        if (!window.VAPT_THEMES.includes(t)) t = 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch(_) {}
+    })();
+
+    // -------------------------------------------------------------
+    // Topbar dropdown toggle — defined at the very top of <head> so
+    // the inline onclick handlers on the bell / theme / user-menu
+    // buttons can always find it, even if any other script later in
+    // the page throws. (Earlier the only handler was inside a large
+    // IIFE at end-of-body; any unrelated JS error would silently kill
+    // it and leave the three topbar buttons looking unclickable.)
+    // -------------------------------------------------------------
+    window.vaptToggleTopbar = function(evt, dropdownId, trigger){
+      try { evt.stopPropagation(); evt.preventDefault(); } catch(_) {}
+      var drop = document.getElementById(dropdownId);
+      if (!drop) return;
+      var willOpen = drop.hidden;
+      // Close every other topbar dropdown so only one is open at a time
+      var others = document.querySelectorAll('.topbar .dropdown');
+      for (var i = 0; i < others.length; i++){
+        if (others[i].id !== dropdownId) others[i].hidden = true;
+      }
+      drop.hidden = !willOpen;
+      if (trigger && trigger.classList) trigger.classList.toggle('open', !drop.hidden);
+
+      // First-time hooks: load notifications when the bell opens; rebuild
+      // the theme list when the picker opens. Both are idempotent.
+      if (!drop.hidden){
+        if (dropdownId === 'notif-dropdown' && typeof window.vaptLoadNotifications === 'function'){
+          // Refresh on each open so the dropdown shows the latest events
+          // even if the periodic poll hasn't fired yet.
+          window.vaptLoadNotifications();
+        }
+        if (dropdownId === 'theme-dropdown' && typeof window.vaptRenderThemeList === 'function'){
+          window.vaptRenderThemeList();
+        }
+        // The "Re-enable finding walkthrough" menu row was removed —
+        // the walkthrough modal flow no longer ships, so the
+        // sessionStorage opt-out + the per-session reset row are
+        // both gone too. Left this block as a no-op anchor in case
+        // future per-user-dropdown init needs to land here.
+        if (dropdownId === 'user-dropdown'){ /* no-op */ }
+      }
+    };
+
+    // Global outside-click closer for the topbar dropdowns. Attached
+    // once on first script execution.
+    document.addEventListener('click', function(e){
+      // If the click landed on a trigger or inside an open dropdown,
+      // let the trigger handler manage it.
+      if (e.target.closest && (e.target.closest('.topbar .dropdown') ||
+                                e.target.closest('#notif-bell') ||
+                                e.target.closest('#user-menu-trigger') ||
+                                e.target.closest('#theme-trigger'))) {
+        return;
+      }
+      var open = document.querySelectorAll('.topbar .dropdown:not([hidden])');
+      for (var i = 0; i < open.length; i++) open[i].hidden = true;
+    });
+    document.addEventListener('keydown', function(e){
+      if (e.key !== 'Escape') return;
+      var open = document.querySelectorAll('.topbar .dropdown:not([hidden])');
+      for (var i = 0; i < open.length; i++) open[i].hidden = true;
+    });
+  </script>
+  {% if user and user.background_path %}
+  <style>
+    /* User-supplied background. We layer a translucent gradient over the
+       image so foreground text stays readable regardless of the user's
+       choice of wallpaper. */
+    body.has-bg::before{
+      content:"";position:fixed;inset:0;z-index:-2;
+      background-image:url('/api/auth/me/background?v={{ user.id }}');
+      background-size:cover;background-position:center;background-attachment:fixed;
+      opacity:.85;
+    }
+    body.has-bg::after{
+      content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(124,92,252,.08), transparent 60%),
+        linear-gradient(180deg, rgba(10,12,16,.55), rgba(10,12,16,.85));
+    }
+    html[data-theme="light"] body.has-bg::after{
+      background:
+        radial-gradient(circle at 20% 0%, rgba(124,92,252,.06), transparent 60%),
+        linear-gradient(180deg, rgba(250,250,250,.60), rgba(250,250,250,.85));
+    }
+  </style>
+  {% endif %}
+</head>
+<body class="{% if user and user.background_path %}has-bg {% endif %}{% block body_class %}{% endblock %}">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-label="VibeDocs">
+        VibeDocs<span class="dot"></span>
+      </span>
+      <strong>Report Generator</strong>
+      <span class="muted small">v0.1</span>
+    </div>
+    {% if user %}
+    <nav>
+      <a href="/dashboard">Dashboard</a>
+      <a href="/projects">Projects</a>
+      <a href="/reports">Reports</a>
+      <a href="/library">Findings Library</a>
+      <a href="/templates">Templates</a>
+      {# Reviews + Admin make no sense in single-user local mode — nothing
+         to review, no other users to manage. Hidden for the local account
+         (which is role=admin only so its approval gates auto-pass). #}
+      {% if not user.is_local %}
+      <a href="/reviews" title="Reports, custom templates, and findings awaiting review">Reviews</a>
+      {% endif %}
+      <a href="/cvss" title="CVSS calculator (v4.0 / v3.1 / v2.0 — pick on the page)">CVSS</a>
+      <a href="/toolkit" title="Consultant utilities: scan converters and other helpers">Toolkit</a>
+      {% if (user.role.value == 'admin' or user.role == 'admin') and not user.is_local %}
+      <a href="/admin/panel" title="Admin Panel — manage users, roles, and per-user permissions">Admin</a>
+      {% endif %}
+      {# Local standalone mode hides the full Admin nav, but the consultant
+         still needs the Backup / Migrate feature to carry all their work
+         (projects, reports, screenshots, custom templates, library findings)
+         onto a fresh monthly VM image. Give them a direct, discoverable link
+         that deep-links straight to the Backup tab. #}
+      {% if user.is_local %}
+      <a href="/admin/panel#backup" title="Backup / Migrate — export everything to move onto a new VM image, or import a bundle">Backup</a>
+      {% endif %}
+      {# The standalone "Admin Templates" link is gone — the admin
+         section is now folded into the main /templates page and only
+         renders when the viewer is an admin. /admin/templates is
+         still reachable as a backward-compatible deep link but
+         admin-gated server-side, so non-admins can't URL-paste in. #}
+      {# API docs link removed from the nav — the /docs Swagger UI exposes
+         every endpoint at a glance and was making it easy to enumerate
+         the surface area of the system from a normal consultant session.
+         The endpoint itself is still reachable for tooling that needs it;
+         only the visible link is gone. #}
+    </nav>
+    {% else %}
+    <nav><!-- nav hidden until login --></nav>
+    {% endif %}
+    <div class="user">
+      <!-- Theme picker: button + popup with every theme as a clickable swatch.
+           Previously this was a one-click cycle that hid the other themes
+           from the user; now they can see + pick directly. -->
+      <div class="theme-wrapper">
+        <button class="icon-btn theme-toggle" type="button" id="theme-trigger"
+                title="Theme"
+                onclick="vaptToggleTopbar(event, 'theme-dropdown', this)">
+          <span id="themeIcon" style="pointer-events:none">🌙</span>
+        </button>
+        <div class="dropdown theme-dropdown" id="theme-dropdown" hidden>
+          <div class="dropdown-header">
+            <strong>Theme</strong>
+            <span class="muted small">Click to apply</span>
+          </div>
+          <div class="dropdown-body" id="theme-list"></div>
+        </div>
+      </div>
+      {% if user %}
+        <!-- Notification Bell.
+             Inline `onclick` is deliberate — the previous shared IIFE
+             handler could silently fail if any earlier script on the page
+             threw, leaving the three topbar buttons looking unclickable.
+             Inline handlers + a tiny globally-defined `vaptToggleTopbar()`
+             make this self-contained. -->
+        <div class="notification-wrapper">
+          <button class="icon-btn notification-bell" id="notif-bell" type="button"
+                  title="Notifications"
+                  onclick="vaptToggleTopbar(event, 'notif-dropdown', this)">
+            <span style="pointer-events:none">🔔</span>
+            <span class="badge badge-danger" id="notif-count" hidden style="pointer-events:none">0</span>
+          </button>
+          <div class="dropdown notification-dropdown" id="notif-dropdown" hidden>
+            <div class="dropdown-header">
+              <strong>Notifications</strong>
+              <button class="btn-link small" id="mark-all-read" type="button">Mark all read</button>
+            </div>
+            <div class="dropdown-body" id="notif-list">
+              <p class="muted small" style="padding:12px;text-align:center">No new notifications</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- User Profile Menu -->
+        <div class="user-menu-wrapper">
+          <button class="user-menu-trigger" id="user-menu-trigger" type="button"
+                  onclick="vaptToggleTopbar(event, 'user-dropdown', this)">
+            <span style="pointer-events:none">
+              {{ user.full_name or user.username }}
+              <span class="role-badge">{{ user.role.value }}</span>
+            </span>
+            <span class="dropdown-arrow" style="pointer-events:none">▼</span>
+          </button>
+          <div class="dropdown user-dropdown" id="user-dropdown" hidden>
+            {% if user.is_local %}
+            {# Local/standalone mode: single-user, no passwords or MFA. The
+               only account action is editing the tester name (full_name),
+               which auto-fills the tester field on every report. #}
+            <a href="/profile/tester-name" class="dropdown-item">
+              <span>✏️</span> Edit Tester Name
+            </a>
+            <hr class="dropdown-divider">
+            <form action="/logout" method="post" style="margin:0">
+              <button class="dropdown-item" type="submit">
+                <span>🚪</span> Sign Out
+              </button>
+            </form>
+            {% else %}
+            <a href="/profile" class="dropdown-item">
+              <span>👤</span> My Profile
+            </a>
+            <a href="/profile/password" class="dropdown-item">
+              <span>🔑</span> Change Password
+            </a>
+            <a href="/profile/mfa" class="dropdown-item">
+              <span>🔒</span> MFA Settings
+            </a>
+            <hr class="dropdown-divider">
+            <form action="/logout" method="post" style="margin:0">
+              <button class="dropdown-item" type="submit">
+                <span>🚪</span> Sign Out
+              </button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  <footer><span class="muted small">VibeDocs · A vibecoded report generator</span></footer>
+
+  <script nonce="{{ request.state.csp_nonce }}">
+    // One emoji per theme so the topbar icon hints at what you're about to switch INTO.
+    // MUST be defined BEFORE the IIFE below that calls _applyThemeIcon —
+    // previously `_THEME_ICONS = {...}` happened later in the file and
+    // `var` hoisting meant the IIFE saw it as `undefined`, throwing
+    // TypeError and killing the rest of the script block (which in turn
+    // meant the theme-picker rows were never rendered and the dropdown
+    // appeared empty when opened).
+    var _THEME_ICONS = {
+      light:    '🌙',   // currently light → click to go dark
+      dark:     '🌃',   // dark → midnight
+      midnight: '🧛',   // midnight → dracula
+      dracula:  '🍂',   // dracula → solarized
+      solarized:'🌲',   // solarized → forest
+      forest:   '☀️',   // forest → wraps back to light
+    };
+    function _applyThemeIcon(t){
+      var icon = document.getElementById('themeIcon');
+      if (icon) icon.textContent = _THEME_ICONS[t] || '🌗';
+    }
+
+    // Highlight active nav link based on current pathname
+    (function(){
+      var p = location.pathname;
+      document.querySelectorAll('.topbar nav a').forEach(function(a){
+        if (p === a.getAttribute('href') || (a.getAttribute('href') !== '/' && p.startsWith(a.getAttribute('href')))) {
+          a.classList.add('active');
+        }
+      });
+      // Initialize the theme icon to match the persisted theme
+      var t = document.documentElement.getAttribute('data-theme') || 'light';
+      _applyThemeIcon(t);
+    })();
+    function cycleTheme(){
+      var themes = (window.VAPT_THEMES || ['light','dark']);
+      var cur = document.documentElement.getAttribute('data-theme') || themes[0];
+      var i = themes.indexOf(cur);
+      var next = themes[(i + 1) % themes.length];
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('vapt_theme', next); } catch(_) {}
+      _applyThemeIcon(next);
+    }
+    // Back-compat: older inline handlers still call toggleTheme()
+    function toggleTheme(){ cycleTheme(); }
+
+    // ============================================================
+    // Theme-picker rows. The actual open/close of the dropdown is now
+    // handled by the inline onclick + the global `vaptToggleTopbar`
+    // defined in <head>, which means a JS error anywhere else on the
+    // page can no longer wedge the bell / theme / user-menu buttons.
+    // This block just builds the swatch list and is exposed globally
+    // as `vaptRenderThemeList()` so the toggle helper can rebuild it
+    // each time the picker opens.
+    // ============================================================
+    (function(){
+      var THEME_META = {
+        light:     { label:'Light',           accent:'#7C5CFC', surface:'#f5f6f8' },
+        dark:      { label:'Dark',            accent:'#a3d23a', surface:'#13161d' },
+        midnight:  { label:'Midnight (OLED)', accent:'#a3d23a', surface:'#070809' },
+        dracula:   { label:'Dracula',         accent:'#bd93f9', surface:'#22232e' },
+        solarized: { label:'Solarized Light', accent:'#268bd2', surface:'#f7eed2' },
+        forest:    { label:'Forest',          accent:'#74c69d', surface:'#0f1c17' },
+      };
+      function renderThemeList(){
+        var list = document.getElementById('theme-list');
+        if (!list) return;
+        var cur = document.documentElement.getAttribute('data-theme') || 'dark';
+        list.innerHTML = (window.VAPT_THEMES || []).map(function(k){
+          var m = THEME_META[k] || { label:k, accent:'#888', surface:'#222' };
+          var active = (k === cur) ? ' active' : '';
+          return ''
+            + '<button type="button" class="theme-row' + active + '" data-theme="' + k + '">'
+            + '  <span class="theme-swatch" style="background:' + m.surface + '">'
+            + '    <span class="theme-swatch-dot" style="background:' + m.accent + '"></span>'
+            + '  </span>'
+            + '  <span class="theme-label">' + m.label + '</span>'
+            + '  <span class="theme-check">' + (active ? '✓' : '') + '</span>'
+            + '</button>';
+        }).join('');
+        list.querySelectorAll('.theme-row').forEach(function(row){
+          row.addEventListener('click', function(){
+            var k = row.dataset.theme;
+            document.documentElement.setAttribute('data-theme', k);
+            try { localStorage.setItem('vapt_theme', k); } catch(_) {}
+            if (typeof _applyThemeIcon === 'function') _applyThemeIcon(k);
+            renderThemeList();
+            // Close every topbar dropdown after a pick
+            var open = document.querySelectorAll('.topbar .dropdown:not([hidden])');
+            for (var i = 0; i < open.length; i++) open[i].hidden = true;
+          });
+        });
+      }
+      window.vaptRenderThemeList = renderThemeList;   // used by vaptToggleTopbar
+      renderThemeList();                              // first paint
+    })();
+
+    // ============================================================
+    // Notification bell — fetch + render + mark-read.
+    //
+    // Previously this UI was inert: the bell button rendered but
+    // nothing populated #notif-list or #notif-count, so users who'd
+    // been granted access to a report had no way to discover that
+    // through the in-app UI (only the email landed). The /api/notifications
+    // endpoint derives a feed from existing AuditLog rows and exposes
+    // an unread counter backed by users.notifications_read_at.
+    //
+    // We refresh on page load, every 60s while the tab is open, and
+    // whenever the user opens the dropdown. Marking-as-read fires when
+    // the user clicks "Mark all read" (the dropdown stays open so they
+    // can still see the items, but the badge clears).
+    // ============================================================
+    {% if user %}
+    (function(){
+      var listEl = document.getElementById('notif-list');
+      var countEl = document.getElementById('notif-count');
+      var markAllBtn = document.getElementById('mark-all-read');
+      if (!listEl || !countEl) return;
+
+      function escapeHtml(s){
+        return String(s == null ? '' : s)
+          .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+          .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      }
+      function timeAgo(iso){
+        if (!iso) return '';
+        var t = new Date(iso).getTime();
+        if (isNaN(t)) return '';
+        var s = Math.max(1, Math.floor((Date.now() - t) / 1000));
+        if (s < 60)   return s + 's ago';
+        if (s < 3600) return Math.floor(s/60) + 'm ago';
+        if (s < 86400) return Math.floor(s/3600) + 'h ago';
+        var d = Math.floor(s/86400);
+        if (d < 7) return d + 'd ago';
+        return new Date(iso).toLocaleDateString();
+      }
+      function render(items){
+        if (!items || !items.length){
+          listEl.innerHTML = '<p class="muted small" style="padding:12px;'
+                           + 'text-align:center">No new notifications</p>';
+          return;
+        }
+        // Stamp each row with `data-notif-id` + `data-is-unread` so the
+        // delegated click handler below can dismiss exactly that row
+        // server-side and decrement the badge by one.
+        listEl.innerHTML = items.map(function(it){
+          var unreadCls = it.is_unread ? ' notif-item-unread' : '';
+          var detail = it.detail
+            ? '<div class="notif-detail muted small">' + escapeHtml(it.detail) + '</div>'
+            : '';
+          return ''
+            + '<a class="notif-item' + unreadCls + '"'
+            +    ' href="' + escapeHtml(it.link || '#') + '"'
+            +    ' data-notif-id="' + escapeHtml(String(it.id))
+            +    '" data-is-unread="' + (it.is_unread ? '1' : '0') + '">'
+            +   '<span class="notif-icon" aria-hidden="true">' + escapeHtml(it.icon || '\u{1F514}') + '</span>'
+            +   '<div class="notif-body">'
+            +     '<div class="notif-msg">' + escapeHtml(it.message || '') + '</div>'
+            +     detail
+            +     '<div class="notif-time muted small">' + escapeHtml(timeAgo(it.created_at)) + '</div>'
+            +   '</div>'
+            + '</a>';
+        }).join('');
+      }
+      function setBadge(n){
+        n = parseInt(n || 0, 10) || 0;
+        if (n <= 0){
+          countEl.hidden = true;
+          countEl.textContent = '0';
+        } else {
+          countEl.hidden = false;
+          countEl.textContent = (n > 99) ? '99+' : String(n);
+        }
+      }
+      function load(){
+        fetch('/api/notifications', {credentials:'same-origin',
+                                     headers:{'Accept':'application/json'}})
+          .then(function(r){
+            if (r.status === 401) return null;    // not signed in; bell stays empty
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+          })
+          .then(function(data){
+            if (!data) return;
+            setBadge(data.unread_count);
+            render(data.items || []);
+          })
+          .catch(function(_){ /* silent — bell never blocks page work */ });
+      }
+      function markAllRead(){
+        fetch('/api/notifications/mark-all-read', {
+          method:'POST', credentials:'same-origin',
+          headers:{'Accept':'application/json'}
+        }).then(function(r){
+          if (!r.ok) return;
+          // Optimistically clear the badge and the per-item highlight
+          setBadge(0);
+          var items = listEl.querySelectorAll('.notif-item-unread');
+          for (var i = 0; i < items.length; i++){
+            items[i].classList.remove('notif-item-unread');
+          }
+        }).catch(function(_){});
+      }
+      if (markAllBtn){
+        markAllBtn.addEventListener('click', function(e){
+          e.preventDefault(); e.stopPropagation();
+          markAllRead();
+        });
+      }
+
+      // Per-row dismiss: clicking an individual notification marks that
+      // single row as read server-side AND optimistically decrements the
+      // unread badge by one. Previously the badge only cleared when the
+      // user pressed "Mark all read", so individual clicks left the
+      // counter stuck on a stale number even after navigating to the
+      // linked report / project.
+      //
+      // Implementation note: we use `fetch(..., {keepalive:true})` so
+      // the request survives the page navigation that the <a href> is
+      // about to trigger. We don't preventDefault() — the user wants
+      // to navigate; we just piggyback the dismissal on the click.
+      listEl.addEventListener('click', function(e){
+        var a = e.target && e.target.closest && e.target.closest('.notif-item');
+        if (!a) return;
+        var id = a.getAttribute('data-notif-id');
+        var wasUnread = a.getAttribute('data-is-unread') === '1';
+        if (!id || !wasUnread) return;
+        // Optimistic UI updates BEFORE the navigation kicks in.
+        a.classList.remove('notif-item-unread');
+        a.setAttribute('data-is-unread', '0');
+        var cur = parseInt((countEl.textContent || '0').replace('+',''), 10) || 0;
+        setBadge(Math.max(0, cur - 1));
+        try {
+          fetch('/api/notifications/' + encodeURIComponent(id) + '/mark-read', {
+            method:'POST', credentials:'same-origin', keepalive:true,
+            headers:{'Accept':'application/json'},
+          }).catch(function(_){});
+        } catch (_) { /* keepalive not supported; best-effort only */ }
+      });
+
+      window.vaptLoadNotifications = load;
+      // Initial fetch + slow poll while tab is visible
+      load();
+      setInterval(function(){
+        if (document.visibilityState === 'visible') load();
+      }, 60000);
+    })();
+    {% endif %}
+  </script>
+
+  {# ============================================================
+     Floating terminal-style notes widget. Persists per-user across
+     sessions via the /api/notes endpoints. Only rendered when the
+     user is authenticated AND has the widget enabled in their
+     preferences (default True on signup; toggleable from /profile).
+     A user who has switched it off gets ZERO DOM / ZERO JS / ZERO
+     /api/notes polling — purely a "this isn't on my screen at all"
+     state, not just a hidden element.
+     ============================================================ #}
+  {% set _show_notes_widget = (user and (user.notes_widget_enabled if user.notes_widget_enabled is not none else True)) %}
+  {% if _show_notes_widget %}
+  <div id="vapt-notes-widget" data-state="collapsed"
+       aria-label="Personal notes terminal">
+    {# ---- COLLAPSED PILL (always visible bottom-right) ---- #}
+    <button class="vnw-pill" id="vnw-pill"
+            type="button" aria-expanded="false"
+            title="Open notes terminal (Ctrl+`)">
+      <span class="vnw-pill-prompt">rootdvapt:~#</span>
+      <span class="vnw-pill-label">notes</span>
+      <span class="vnw-cursor" aria-hidden="true"></span>
+      <span class="vnw-badge" id="vnw-pill-badge" hidden>0</span>
+    </button>
+
+    {# ---- EXPANDED TERMINAL PANEL ---- #}
+    <section class="vnw-panel" id="vnw-panel" hidden
+             aria-label="Notes terminal">
+      <header class="vnw-titlebar">
+        <span class="vnw-dot vnw-dot-r" aria-hidden="true"></span>
+        <span class="vnw-dot vnw-dot-y" aria-hidden="true"></span>
+        <span class="vnw-dot vnw-dot-g" aria-hidden="true"></span>
+        <span class="vnw-title">
+          {{ user.username or 'consultant' }}@vibedocs:~/notes
+        </span>
+        {# Single Minimise control. The old × (close) button was
+           removed — it was redundant with minimise and users reported
+           it as dead. Minimise is now the ONLY chrome control: it
+           plays a smooth slide-down animation and docks the widget as
+           a slim bar at the very bottom of the screen; clicking that
+           bar restores the panel.
+
+           Belt-and-braces wiring: the widget JS binds this via
+           addEventListener AND publishes `window.__vnwMinimize`; the
+           inline onclick is a last-resort fallback so the control is
+           never dead even if the external script fails to load. The
+           fallback adds the `is-minimizing` class first so the CSS
+           slide-down still plays, then hands off after the animation. #}
+        <button class="vnw-min" id="vnw-min" type="button"
+                title="Minimise to a bar at the bottom of the screen"
+                aria-label="Minimise"
+                onclick="(window.__vnwMinimize||function(){var w=document.getElementById('vapt-notes-widget'),p=document.getElementById('vnw-panel'),b=document.getElementById('vnw-minbar');if(p){p.classList.add('is-minimizing');}setTimeout(function(){if(w)w.dataset.state='minimized';if(p){p.hidden=true;p.classList.remove('is-minimizing');}if(b)b.hidden=false;},260);})();return false;">_</button>
+      </header>
+
+      <div class="vnw-body" id="vnw-body" tabindex="0">
+        <pre class="vnw-banner" id="vnw-banner">
+    ( (
+     ) )
+  ..........
+  |        |]    VibeDocs scratchpad v1
+  \        /     Logged in as {{ user.username }}
+   `------'      Press Enter to save a note
+
+        </pre>
+        <ul class="vnw-list" id="vnw-list" aria-live="polite"></ul>
+        <p class="vnw-empty" id="vnw-empty" hidden>
+          <span class="vnw-faint">// no notes yet — start typing below.</span>
+        </p>
+      </div>
+
+      <form class="vnw-prompt-row" id="vnw-form" autocomplete="off">
+        <span class="vnw-prompt-sigil">$</span>
+        <input class="vnw-input" id="vnw-input" type="text"
+               placeholder="add a note and press Enter…"
+               maxlength="2000" spellcheck="false"
+               autocomplete="off" autocorrect="off" autocapitalize="off">
+      </form>
+
+      <footer class="vnw-statusbar" id="vnw-statusbar">
+        <span class="vnw-status-left" id="vnw-status-left">ready</span>
+        <span class="vnw-status-right">
+          <kbd>Enter</kbd> save · <kbd>Esc</kbd> close · <kbd>Ctrl+`</kbd> toggle
+        </span>
+      </footer>
+    </section>
+
+    {# ---- MINIMIZED BAR (slim dock at the very bottom of the screen) ----
+       Shown when the user clicks the "_" minimise button. Distinct from
+       the close (×) action which goes back to the floating round pill.
+       Clicking anywhere on the bar (or the ▴ restore control) re-opens
+       the full panel. The inline onclick is a no-JS fallback mirroring
+       window.__vnwOpen so the bar is never a dead end. #}
+    <button class="vnw-minbar" id="vnw-minbar" type="button" hidden
+            title="Restore notes terminal"
+            aria-label="Restore notes terminal"
+            onclick="(window.__vnwOpen||function(){var w=document.getElementById('vapt-notes-widget'),p=document.getElementById('vnw-panel'),b=document.getElementById('vnw-minbar');if(w)w.dataset.state='expanded';if(p)p.hidden=false;if(b)b.hidden=true;})();return false;">
+      <span class="vnw-minbar-sigil">rootdvapt:~#</span>
+      <span class="vnw-minbar-label">notes</span>
+      <span class="vnw-badge" id="vnw-minbar-badge" hidden>0</span>
+      <span class="vnw-minbar-restore" aria-hidden="true">▴ open</span>
+    </button>
+  </div>
+
+  {# `?v=N` is a manual cache-buster — bump it whenever notes_widget.js
+     gets a behaviour change. nginx serves static files without a
+     Cache-Control header today, so without the query string the
+     browser keeps using its heuristically-cached copy and the user
+     never sees new keyboard-shortcut handlers / button wirings. #}
+  <script src="/static/js/notes_widget.js?v=10" defer></script>
+  {% endif %}
+</body>
+</html>

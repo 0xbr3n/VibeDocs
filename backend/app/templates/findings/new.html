@@ -1,0 +1,598 @@
+{% extends "base.html" %}
+{% block title %}Add Finding - Findings Library{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Add New Finding</h1>
+    <p class="page-sub">Create a reusable finding for the library</p>
+  </div>
+  <div class="actions">
+    <a href="/library" class="btn-secondary">← Back to Library</a>
+  </div>
+</div>
+
+<form id="new-finding-form" class="card" style="margin-top:20px;max-width:900px">
+  <div class="card-h">
+    <h2>Finding Details</h2>
+  </div>
+  
+  <div style="padding:20px;display:grid;gap:16px">
+    <!-- Template Type.
+         Options are populated at page-load from /api/templates so the
+         submitted `template_type` code ALWAYS matches a real backend
+         template. The previous hardcoded list had codes that didn't
+         exist server-side (`mobile_vapt`, `network_vapt`, `cloud_vapt`,
+         `iot_vapt`, …) — only `web_vapt` happened to match. Picking any
+         other option resolved to no template_id, the submit silently
+         404'd with "Unknown template", and the finding was never
+         created. That's why a consultant's own non-web findings never
+         showed up in their library picker. -->
+    <label>
+      Template Type
+      <select name="template_type" required id="template-type-select">
+        <option value="" disabled selected>Loading template types…</option>
+      </select>
+      <span class="small muted">Pick the assessment type this finding applies to. It controls which library scope shows it on the report picker.</span>
+    </label>
+    
+    <!-- Title -->
+    <label>
+      Finding Title
+      <input name="title" required placeholder="e.g., Cross-Site Scripting (XSS)">
+    </label>
+    
+    <!-- Description — wrapped in div (not label) so Quill toolbar isn't
+         inside the label ancestor and doesn't inherit font-weight:500 -->
+    <div class="nf-field">
+      <label for="nf-description">Description</label>
+      <textarea id="nf-description" name="description" rows="4" placeholder="Detailed description of the vulnerability..."></textarea>
+    </div>
+
+    <!-- Impact -->
+    <div class="nf-field">
+      <label for="nf-impact">Impact</label>
+      <textarea id="nf-impact" name="impact" rows="3" placeholder="What could an attacker do with this vulnerability?"></textarea>
+    </div>
+
+    <!-- Remediation -->
+    <div class="nf-field">
+      <label for="nf-remediation">Remediation</label>
+      <textarea id="nf-remediation" name="remediation" rows="4" placeholder="How to fix this vulnerability..."></textarea>
+    </div>
+
+    <!-- References -->
+    <div class="nf-field">
+      <label for="nf-references">References (Optional)</label>
+      <textarea id="nf-references" name="references" rows="2" placeholder="Links to documentation, CVE references, etc."></textarea>
+    </div>
+    
+    <!-- Inline CVSS calculator.
+         Originally consultants had to jump to /cvss to score a finding, which
+         wiped this form's draft state. The calculator mounts on demand below
+         and writes the vector / score / severity back into the inputs in this
+         form so the consultant never has to leave the page. -->
+    <div class="card-soft" id="inline-cvss-card"
+         style="background:var(--surface-2);border:1px solid var(--border);
+                border-radius:6px;padding:0;overflow:hidden">
+      <button type="button" id="inline-cvss-toggle"
+              style="width:100%;display:flex;align-items:center;justify-content:space-between;
+                     background:transparent;border:0;cursor:pointer;color:var(--text);
+                     padding:12px 14px;font-size:14px;font-weight:600">
+        <span>📐 Calculate CVSS score on this page</span>
+        <span class="muted small" id="inline-cvss-arrow" style="font-weight:400">Expand ▾</span>
+      </button>
+      <div id="inline-cvss-body" hidden style="border-top:1px solid var(--border);padding:12px 14px">
+        <p class="small muted" style="margin:0 0 10px">
+          Pick metric values — the vector, score, and severity fields below
+          auto-fill as you change selections. Switch CVSS version with the tabs.
+          You can still type into the vector / score / severity inputs manually
+          afterwards to override.
+        </p>
+        <div class="cvss-tabs" role="tablist" id="inline-cvss-tabs">
+          <button type="button" class="cvss-tab active" data-tab="v4"  role="tab" aria-selected="true">CVSS 4.0</button>
+          <button type="button" class="cvss-tab"        data-tab="v31" role="tab">CVSS 3.1</button>
+          <button type="button" class="cvss-tab"        data-tab="v2"  role="tab">CVSS 2.0</button>
+        </div>
+        <div class="cvss-pane"            id="inline-cvss-pane-v4"><div id="inline-cvss-mount-v4"></div></div>
+        <div class="cvss-pane is-hidden" id="inline-cvss-pane-v31"><div id="inline-cvss-mount-v31"></div></div>
+        <div class="cvss-pane is-hidden" id="inline-cvss-pane-v2"><div id="inline-cvss-mount-v2"></div></div>
+      </div>
+    </div>
+
+    <!-- Severity & Scoring Row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+      <label>
+        Default Severity
+        {# Values match the Pydantic Severity enum's VALUES (not its
+           Python member names). Earlier the dropdown emitted
+           lowercase ("medium", "info") which the schema rejected with
+           a 422 — Pydantic enums coerce by value, not by member name,
+           so "Medium" works and "medium" does not. "Informational"
+           is the full enum value (no "Info" member exists). #}
+        <select name="severity" required>
+          <option value="Critical">Critical</option>
+          <option value="High">High</option>
+          <option value="Medium" selected>Medium</option>
+          <option value="Low">Low</option>
+          <option value="Informational">Informational</option>
+        </select>
+      </label>
+      
+      <label>
+        Default CVSS Vector (Optional)
+        <input name="cvss_vector" placeholder="CVSS:4.0/AV:N/...">
+      </label>
+      
+      <label>
+        Default CVSS Score (Optional)
+        <input name="cvss_score" type="number" step="0.1" min="0" max="10" placeholder="e.g., 7.5">
+      </label>
+    </div>
+    
+    <!-- CWE & OWASP Row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <label>
+        CWE (Optional)
+        <input name="cwe" placeholder="e.g., CWE-79">
+      </label>
+      
+      <label>
+        OWASP Category (Optional)
+        <input name="owasp_category" placeholder="e.g., A03:2021">
+      </label>
+    </div>
+    
+    <!-- Tags -->
+    <label>
+      Tags (comma-separated, optional)
+      <input name="tags" placeholder="auth, xss, injection, sensitive-data">
+      <span class="small muted">Use tags to make findings easier to search and filter</span>
+    </label>
+    
+    <!-- Visibility / review flow.
+         Consultants: default is a personal draft they can reuse immediately;
+         "Submit for team review" promotes it into the admin approval queue.
+         Admins / seniors auto-approve their own findings so the choice is
+         a no-op for them. -->
+    {% if user.role.value not in ('admin', 'senior') %}
+    <div class="card-soft" style="background:var(--surface-2);border:1px solid var(--border);
+                                   border-radius:6px;padding:12px 14px;margin-top:4px">
+      <p style="margin:0 0 6px;font-weight:600;font-size:13.5px">Where does this finding go?</p>
+      <label style="display:flex;align-items:flex-start;gap:8px;margin:0 0 6px;font-weight:400">
+        <input type="radio" name="visibility" value="draft" checked style="margin-top:3px">
+        <span><strong>Save as personal draft</strong>
+          <span class="small muted" style="display:block">
+            Only you can see this finding in the picker. Reuse it on as many of your reports as you like.
+          </span>
+        </span>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:8px;margin:0;font-weight:400">
+        <input type="radio" name="visibility" value="submit" style="margin-top:3px">
+        <span><strong>Submit for team review</strong>
+          <span class="small muted" style="display:block">
+            An admin or senior reviews it. Once approved, every consultant on the team can pick it from the library.
+          </span>
+        </span>
+      </label>
+    </div>
+    {% else %}
+    <p class="small muted" style="margin:0">
+      As {{ user.role.value }}, your findings are added to the team library immediately.
+    </p>
+    {% endif %}
+
+    <!-- Submit -->
+    <div class="actions" style="margin-top:8px">
+      <button type="submit" class="btn-primary" id="primary-submit">Add to Library</button>
+      <a href="/library" class="btn-secondary">Cancel</a>
+    </div>
+
+    <p id="form-status" class="small" style="margin:8px 0 0"></p>
+  </div>
+</form>
+
+<!-- Quill rich-text editor (same version used in report editor and library edit modal) -->
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+<style>
+/* ── Critical Quill SVG constraints (prevents huge black-triangle picker arrows) ── */
+.ql-snow .ql-stroke{fill:none;stroke:#888;stroke-linecap:round;stroke-linejoin:round;stroke-width:2}
+.ql-snow .ql-stroke-miter{fill:none;stroke:#888;stroke-miterlimit:10;stroke-width:2}
+.ql-snow .ql-fill,.ql-snow .ql-stroke.ql-fill{fill:#888;stroke:none}
+.ql-snow .ql-picker-label{position:relative;cursor:pointer;display:inline-block;height:100%;padding-left:8px;padding-right:2px;width:100%}
+.ql-snow .ql-picker:not(.ql-color-picker):not(.ql-icon-picker) svg{position:absolute;margin-top:-9px;right:0;top:50%;width:18px}
+.ql-snow .ql-picker-options{display:none;position:absolute;min-width:100%;background:var(--surface);padding:4px 8px;white-space:nowrap;z-index:100;border:1px solid var(--border);border-radius:6px}
+.ql-snow .ql-picker.ql-expanded .ql-picker-options{display:block;top:100%}
+.ql-toolbar.ql-snow select{display:none}
+.ql-snow.ql-toolbar button,.ql-snow .ql-toolbar button{float:left;height:24px;padding:3px 5px;width:28px;background:none;border:none;cursor:pointer;display:inline-block}
+.ql-snow .ql-formats{display:inline-block;vertical-align:middle}
+.ql-snow .ql-formats:after{clear:both;content:'';display:table}
+.ql-snow .ql-tooltip{position:absolute !important;visibility:hidden !important}
+.ql-snow .ql-tooltip.ql-hidden{display:none !important}
+.ql-snow .ql-tooltip input[type="text"]{min-height:auto !important;margin-top:0 !important;width:auto !important}
+/* ── Editor chrome ── */
+.ql-toolbar.ql-snow{background:var(--surface-2);border:1px solid var(--border);border-radius:6px 6px 0 0;padding:6px 8px}
+/* Toolbar button base state — locked with !important so global button rules can't bleed */
+.ql-toolbar.ql-snow button .ql-stroke{stroke:var(--text-2) !important}
+.ql-toolbar.ql-snow button .ql-fill{fill:var(--text-2) !important}
+/* Active / hovered button override */
+.ql-toolbar.ql-snow button:hover .ql-stroke,
+.ql-toolbar.ql-snow button.ql-active .ql-stroke{stroke:var(--accent-dark) !important}
+.ql-toolbar.ql-snow button:hover .ql-fill,
+.ql-toolbar.ql-snow button.ql-active .ql-fill{fill:var(--accent-dark) !important}
+.nf-field{display:flex;flex-direction:column;gap:0}
+.nf-rich-host{background:var(--surface);border:1px solid var(--border);border-top:0;border-radius:0 0 6px 6px;min-height:110px;color:var(--text);font-family:inherit;font-size:13.5px}
+.nf-rich-host.ql-container.ql-snow .ql-editor{min-height:90px;padding:8px 10px}
+.nf-rich-host.ql-container.ql-snow .ql-editor:focus{outline:none}
+/* Keep textareas permanently hidden; show only on CDN failure */
+#nf-description,#nf-impact,#nf-remediation,#nf-references{display:none}
+textarea.nf-quill-fallback{display:block !important}
+</style>
+
+<!-- CVSS calculator JS (same modules the standalone /cvss page uses).
+     Both expose mount* functions on `window` and accept an onChange
+     callback (vector, score, severity). -->
+<script src="/static/js/cvss_v4.js?v=20260518"></script>
+<script src="/static/js/cvss_legacy.js?v=20260518"></script>
+<script nonce="{{ request.state.csp_nonce }}">
+function escapeHtml(s){
+  return String(s==null?"":s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ===== Quill rich-text editors =====
+const NF_RICH_FIELDS = ['nf-description','nf-impact','nf-remediation','nf-references'];
+const NF_QUILL_TOOLBAR = [
+  ['bold','italic','underline','strike'],
+  [{'list':'ordered'},{'list':'bullet'}],
+  ['blockquote','code-block'],
+  ['link'],
+  ['clean'],
+];
+const _nfQuills = {};
+
+function _nfMountEditor(taId){
+  const ta = document.getElementById(taId);
+  if (!ta || _nfQuills[taId]) return;
+  if (typeof Quill === 'undefined') return;
+
+  const host = document.createElement('div');
+  host.className = 'nf-rich-host';
+  ta.parentNode.insertBefore(host, ta);
+
+  let q;
+  try {
+    q = new Quill(host, {theme:'snow', modules:{toolbar:NF_QUILL_TOOLBAR}, placeholder:ta.placeholder||''});
+  } catch(err){
+    host.remove();
+    ta.classList.add('nf-quill-fallback');
+    return;
+  }
+
+  _nfQuills[taId] = q;
+
+  // Mirror Quill → textarea so FormData picks it up on submit
+  q.on('text-change', () => {
+    const raw = q.root.innerHTML;
+    ta.value = (raw === '<p><br></p>') ? '' : raw;
+  });
+}
+
+// Mount all editors once Quill is available
+function _nfMountAll(){
+  NF_RICH_FIELDS.forEach(_nfMountEditor);
+}
+
+if (typeof Quill !== 'undefined'){
+  _nfMountAll();
+} else {
+  // Quill CDN may still be loading — poll briefly
+  const _nfTimer = setInterval(() => {
+    if (typeof Quill !== 'undefined'){ clearInterval(_nfTimer); _nfMountAll(); }
+  }, 50);
+  setTimeout(() => {
+    clearInterval(_nfTimer);
+    // Fallback: show raw textareas if CDN never loaded
+    NF_RICH_FIELDS.forEach(id => {
+      const ta = document.getElementById(id);
+      if (ta && !_nfQuills[id]) ta.classList.add('nf-quill-fallback');
+    });
+  }, 5000);
+}
+
+// ----- Inline CVSS calculator wiring -----
+//
+// Lazy-mount the three calculators only when the user expands the panel,
+// so the page doesn't pay the DOM build cost up front. Each calculator's
+// onChange handler writes back into the existing form inputs so the
+// consultant can continue editing the rest of the finding without losing
+// state.
+(function(){
+  const toggle = document.getElementById('inline-cvss-toggle');
+  const body   = document.getElementById('inline-cvss-body');
+  const arrow  = document.getElementById('inline-cvss-arrow');
+  if (!toggle || !body) return;
+
+  const vectorInput   = document.querySelector('input[name="cvss_vector"]');
+  const scoreInput    = document.querySelector('input[name="cvss_score"]');
+  const severitySel   = document.querySelector('select[name="severity"]');
+
+  // CVSS severity strings -> the option values in the form's <select>.
+  // The <select>'s option values now match the Pydantic Severity
+  // enum's capitalised values (Critical / High / Medium / Low /
+  // Informational) — earlier the dropdown emitted lowercase and the
+  // schema rejected submissions with 422. Keep this map in sync with
+  // the <option value="..."> list above.
+  function mapSeverity(sev){
+    if (!sev) return null;
+    const s = String(sev).toLowerCase();
+    if (s.startsWith('crit'))   return 'Critical';
+    if (s.startsWith('high'))   return 'High';
+    if (s.startsWith('med'))    return 'Medium';
+    if (s.startsWith('low'))    return 'Low';
+    // CVSS v4 can return "Informational" outright; v3 returns "None"
+    // for 0.0 — both should land on the Informational bucket here.
+    return 'Informational';
+  }
+  function applyResult(vector, score, severity){
+    if (vectorInput) vectorInput.value = vector || '';
+    if (scoreInput)  scoreInput.value  = (score == null) ? '' : Number(score).toFixed(1);
+    const sevKey = mapSeverity(severity);
+    if (severitySel && sevKey){
+      // Only flip the dropdown if a matching option exists, so editing
+      // the calculator never silently picks an invalid severity.
+      for (const opt of severitySel.options){
+        if (opt.value === sevKey){ severitySel.value = sevKey; break; }
+      }
+    }
+  }
+
+  // Mount each calculator at most once. Stateless after construction —
+  // the standalone /cvss page does exactly the same.
+  let mounted = {v4:false, v31:false, v2:false};
+  function ensureMounted(which){
+    if (mounted[which]) return;
+    if (which === 'v4'  && typeof window.mountCvssCalculator    === 'function'){
+      window.mountCvssCalculator(document.getElementById('inline-cvss-mount-v4'),  applyResult);
+      mounted.v4 = true;
+    }
+    if (which === 'v31' && typeof window.mountCvssV31Calculator === 'function'){
+      window.mountCvssV31Calculator(document.getElementById('inline-cvss-mount-v31'), applyResult);
+      mounted.v31 = true;
+    }
+    if (which === 'v2'  && typeof window.mountCvssV2Calculator  === 'function'){
+      window.mountCvssV2Calculator(document.getElementById('inline-cvss-mount-v2'),  applyResult);
+      mounted.v2 = true;
+    }
+  }
+
+  // Expand / collapse the calculator
+  toggle.addEventListener('click', () => {
+    const willOpen = body.hidden;
+    body.hidden = !willOpen;
+    arrow.textContent = willOpen ? 'Collapse ▴' : 'Expand ▾';
+    if (willOpen){
+      // Mount whichever tab is active. Default to v4 on first expand.
+      const active = document.querySelector('#inline-cvss-tabs .cvss-tab.active');
+      ensureMounted(active ? active.dataset.tab : 'v4');
+    }
+  });
+
+  // Tab switching
+  const TABS  = document.querySelectorAll('#inline-cvss-tabs .cvss-tab');
+  const PANES = {
+    v4:  document.getElementById('inline-cvss-pane-v4'),
+    v31: document.getElementById('inline-cvss-pane-v31'),
+    v2:  document.getElementById('inline-cvss-pane-v2'),
+  };
+  for (const t of TABS){
+    t.addEventListener('click', () => {
+      TABS.forEach(x => x.classList.toggle('active', x === t));
+      TABS.forEach(x => x.setAttribute('aria-selected', x === t ? 'true' : 'false'));
+      for (const [k, el] of Object.entries(PANES)){
+        el.classList.toggle('is-hidden', k !== t.dataset.tab);
+      }
+      ensureMounted(t.dataset.tab);
+    });
+  }
+})();
+
+// Auto-update the Severity dropdown when the user manually types a CVSS score.
+// The inline calculator already does this via its applyResult callback;
+// this listener covers the case where the consultant types directly in the
+// "Default CVSS Score" number input without using the calculator.
+(function() {
+  const scoreInput  = document.querySelector('input[name="cvss_score"]');
+  const severitySel = document.querySelector('select[name="severity"]');
+  if (!scoreInput || !severitySel) return;
+  scoreInput.addEventListener('input', function() {
+    if (this.value === '') return; // don't clear severity if score is erased
+    const s = parseFloat(this.value);
+    let sev;
+    if (isNaN(s) || s === 0) sev = 'Informational';
+    else if (s < 4)  sev = 'Low';
+    else if (s < 7)  sev = 'Medium';
+    else if (s < 9)  sev = 'High';
+    else             sev = 'Critical';
+    severitySel.value = sev;
+  });
+})();
+
+// Build a `template_code -> template_id` map once on page load so the
+// form can submit the integer `template_id` the FindingLibrary schema
+// requires. Earlier the form posted `template_type: "web_vapt"` (a
+// string code) and the server rejected the body with 422 because
+// `template_id` was missing. The /api/templates endpoint is the
+// authoritative source — better to look up live than hardcode the
+// mapping here and have it rot when admins add new template types.
+let _templateCodeToId = null;
+async function _loadTemplateCodeMap() {
+  if (_templateCodeToId !== null) return _templateCodeToId;
+  try {
+    const r = await fetch('/api/templates?only_active=false', {credentials:'include'});
+    if (!r.ok) throw new Error('Could not load template list');
+    const list = await r.json();
+    const map = {};
+    for (const t of list) {
+      if (t.code && t.id) map[t.code] = t.id;
+    }
+    _templateCodeToId = map;
+    // Populate the Template Type <select> from the SAME authoritative
+    // list so every option's value is a real backend code. Friendly
+    // label preference: explicit `name` from the API, else a
+    // title-cased version of the code.
+    _populateTemplateSelect(list);
+    return map;
+  } catch (err) {
+    _templateCodeToId = {};
+    console.error('Template-code lookup failed:', err);
+    const sel = document.getElementById('template-type-select');
+    if (sel) {
+      sel.innerHTML =
+        '<option value="" disabled selected>Could not load — refresh the page</option>';
+    }
+    return _templateCodeToId;
+  }
+}
+
+function _populateTemplateSelect(list){
+  const sel = document.getElementById('template-type-select');
+  if (!sel) return;
+  // Sort web_vapt first (most common), then the rest alphabetically by
+  // label so the dropdown is predictable.
+  const opts = list
+    .filter(t => t.code && t.id)
+    .map(t => ({
+      code: t.code,
+      label: t.name || t.code.replace(/_/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase()),
+    }))
+    .sort((a, b) => {
+      if (a.code === 'web_vapt') return -1;
+      if (b.code === 'web_vapt') return 1;
+      return a.label.localeCompare(b.label);
+    });
+  if (!opts.length){
+    sel.innerHTML =
+      '<option value="" disabled selected>No template types available</option>';
+    return;
+  }
+  sel.innerHTML = opts
+    .map(o => `<option value="${escapeHtml(o.code)}">${escapeHtml(o.label)}</option>`)
+    .join('');
+}
+
+// Prime the map immediately so submit doesn't pay the round-trip AND
+// the dropdown fills as soon as the API responds.
+_loadTemplateCodeMap();
+
+document.getElementById('new-finding-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const status = document.getElementById('form-status');
+  const btn = e.target.querySelector('button[type="submit"]');
+
+  btn.disabled = true;
+  btn.textContent = 'Adding...';
+  status.textContent = 'Creating finding...';
+  status.style.color = '#999';
+
+  // Read Quill values (Quill mirrors to textarea.value on text-change,
+  // but flush any editor that hasn't fired text-change yet by reading
+  // the root HTML directly at submit time).
+  NF_RICH_FIELDS.forEach(id => {
+    const q = _nfQuills[id];
+    const ta = document.getElementById(id);
+    if (q && ta) {
+      const raw = q.root.innerHTML;
+      ta.value = (raw === '<p><br></p>') ? '' : raw;
+    }
+  });
+
+  const fd = new FormData(e.target);
+
+  // Manual required-field check (browser skips required on display:none elements)
+  const descVal = (fd.get('description') || '').trim();
+  if (!descVal) {
+    status.textContent = '❌ Description is required.';
+    status.style.color = 'red';
+    btn.disabled = false; btn.textContent = 'Add to Library';
+    return;
+  }
+
+  // Parse tags
+  const tags = fd.get('tags') ? fd.get('tags').split(',').map(t => t.trim()).filter(Boolean) : [];
+
+  // Resolve template_id from the form's template_type code. Fall back
+  // to a clear error rather than letting the server reject with 422.
+  const tplMap = await _loadTemplateCodeMap();
+  const tplCode = fd.get('template_type');
+  const tplId = tplMap[tplCode];
+  if (!tplId) {
+    status.textContent = `❌ Unknown template "${tplCode}". Refresh and try again.`;
+    status.style.color = 'red';
+    btn.disabled = false;
+    btn.textContent = 'Add to Library';
+    return;
+  }
+
+  // Field names below match `FindingLibraryCreate` (Pydantic):
+  //   * `template_id` (int FK)             ← was `template_type` (string)
+  //   * `default_severity` (Severity enum) ← was `severity`
+  //   * `default_cvss_vector` (str|null)   ← was `cvss_vector`
+  //   * `default_cvss_score` (float|null)  ← was `cvss_score`
+  // Without these renames every submission 422'd with "field required".
+  const payload = {
+    template_id: tplId,
+    title: fd.get('title'),
+    description: fd.get('description'),
+    impact: fd.get('impact'),
+    remediation: fd.get('remediation'),
+    references: fd.get('references') || null,
+    default_severity: fd.get('severity'),
+    default_cvss_vector: fd.get('cvss_vector') || null,
+    default_cvss_score: fd.get('cvss_score') ? parseFloat(fd.get('cvss_score')) : null,
+    cwe: fd.get('cwe') || null,
+    owasp_category: fd.get('owasp_category') || null,
+    tags: tags
+  };
+  
+  // Pull the visibility radio. Default to "draft" if absent (admin / senior
+  // sees no radio because their findings are auto-approved server-side).
+  const visEl = document.querySelector('input[name="visibility"]:checked');
+  const visibility = visEl ? visEl.value : 'draft';
+  const submitParam = visibility === 'submit' ? '?submit_for_review=true' : '';
+
+  try {
+    const resp = await fetch('/api/findings-library' + submitParam, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+      credentials: 'include'
+    });
+
+    if (resp.ok) {
+      const successMsg = visibility === 'submit'
+        ? '✓ Finding submitted for team review. Redirecting...'
+        : '✓ Personal draft saved — pick it from your library on your next report. Redirecting...';
+      status.textContent = successMsg;
+      status.style.color = 'green';
+      setTimeout(() => {
+        window.location = '/library';
+      }, 1000);
+    } else {
+      const err = await resp.json();
+      status.textContent = '❌ Error: ' + (err.detail || resp.status);
+      status.style.color = 'red';
+      btn.disabled = false;
+      btn.textContent = 'Add to Library';
+    }
+  } catch (err) {
+    status.textContent = '❌ Error: ' + err.message;
+    status.style.color = 'red';
+    btn.disabled = false;
+    btn.textContent = 'Add to Library';
+  }
+});
+</script>
+{% endblock %}

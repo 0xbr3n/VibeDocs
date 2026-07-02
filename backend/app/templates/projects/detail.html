@@ -1,0 +1,1023 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} - VAPT Reporter{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>
+      {{ project.name }}
+      {% if project.status == 'completed' %}
+        <span class="badge badge-success" title="This project is closed. Re-open it to make further edits."
+              style="margin-left:8px;vertical-align:middle">COMPLETED</span>
+      {% else %}
+        <span class="badge badge-accent" style="margin-left:8px;vertical-align:middle">ACTIVE</span>
+      {% endif %}
+    </h1>
+    <p class="page-sub">{{ project.client_name }} · {{ project.sector or 'No sector' }}</p>
+  </div>
+  <div class="actions">
+    <a href="/projects" class="btn-secondary">← Back to Projects</a>
+    {% if user.role.value in ['admin','senior'] or (project.lead_id == user.id) %}
+    {% if project.status == 'completed' %}
+    <button class="btn-secondary" id="reopen-project-btn"
+            title="Re-open this project so edits can continue.">
+      ↻ Re-open project
+    </button>
+    {% else %}
+    <button class="btn-secondary" id="close-project-btn"
+            title="Mark this project as Completed once all reports are finalised. You can re-open it later if needed.">
+      ✓ Close project
+    </button>
+    {% endif %}
+    <button class="btn-danger" id="delete-project-btn"
+            title="Permanently delete this project and every report under it. Members are notified by email.">
+      Delete project
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<script nonce="{{ request.state.csp_nonce }}">
+(function(){
+  const btn = document.getElementById('delete-project-btn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const name = {{ project.name | tojson }};
+    const typed = prompt(
+      `Delete project "${name}"?\n\n` +
+      `This permanently removes every report, finding, and uploaded file ` +
+      `under this project. Every member is emailed.\n\n` +
+      `Type the project name to confirm:`,
+    );
+    if (typed == null) return;
+    if (typed.trim() !== name){
+      alert("Name didn't match — nothing was deleted.");
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+    try {
+      const r = await fetch(`/api/projects/{{ project.id }}`, {
+        method: 'DELETE', credentials: 'include',
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.detail || r.statusText);
+      alert(`Project deleted. ${data.reports_deleted} report${data.reports_deleted === 1 ? '' : 's'} removed; ${data.notified} member${data.notified === 1 ? '' : 's'} notified.`);
+      window.location = '/projects';
+    } catch (err) {
+      alert('Failed: ' + err.message);
+      btn.disabled = false;
+      btn.textContent = 'Delete project';
+    }
+  });
+})();
+
+// ===== Project close / reopen =====
+//
+// One small handler covers both buttons because the only difference is
+// the endpoint + verb. Reload on success so the badge + button toggle
+// matches the new state.
+(function(){
+  function wire(id, endpoint, verb){
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      const ok = confirm(`${verb} project "{{ project.name }}"?`);
+      if (!ok) return;
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = verb + 'ing…';
+      try {
+        const r = await fetch(`/api/projects/{{ project.id }}/${endpoint}`, {
+          method: 'POST', credentials: 'include',
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail || r.statusText);
+        location.reload();
+      } catch (err){
+        alert('Failed: ' + (err.message || err));
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    });
+  }
+  wire('close-project-btn',  'close',  'Close');
+  wire('reopen-project-btn', 'reopen', 'Re-open');
+})();
+
+</script>
+
+{# Resolved once + reused for the edit button gating and the Delete
+   button above. Backend `update_project` uses exactly the same predicate
+   (admin / senior / project lead), so the UI affordance can't mislead. #}
+{% set can_edit_project = (user.role.value in ['admin','senior']) or (project.lead_id == user.id) %}
+
+<!-- Project Info Card -->
+<div class="card" style="margin-top:20px">
+  <div class="card-h">
+    <h2>Project Details</h2>
+    {% if can_edit_project %}
+    <div class="actions">
+      <button id="project-edit-btn" class="btn-secondary btn-sm" type="button">✎ Edit details</button>
+      <button id="project-cancel-edit" class="btn-secondary btn-sm" type="button" hidden>Cancel</button>
+      <button id="project-save-edit" class="btn-primary btn-sm" type="button" hidden>Save details</button>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- READ-ONLY VIEW -->
+  <div id="project-readonly" style="padding:16px 20px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px">
+      <div>
+        <p class="small muted" style="margin:0 0 4px">Client</p>
+        <p style="margin:0"><strong>{{ project.client_name }}</strong></p>
+      </div>
+      <div>
+        <p class="small muted" style="margin:0 0 4px">Sector</p>
+        <p style="margin:0">{{ project.sector or 'Not specified' }}</p>
+      </div>
+      <div>
+        <p class="small muted" style="margin:0 0 4px">Estimated dates</p>
+        <p style="margin:0">
+          {% if project.testing_start and project.testing_end %}
+            {{ project.testing_start.strftime('%d %b %Y') }} - {{ project.testing_end.strftime('%d %b %Y') }}
+          {% elif project.testing_start or project.testing_end %}
+            {% if project.testing_start %}from {{ project.testing_start.strftime('%d %b %Y') }}{% endif %}
+            {% if project.testing_end %}until {{ project.testing_end.strftime('%d %b %Y') }}{% endif %}
+          {% else %}
+            Not set
+          {% endif %}
+        </p>
+      </div>
+      <div>
+        <p class="small muted" style="margin:0 0 4px">Created</p>
+        <p style="margin:0">{{ project.created_at.strftime('%d %b %Y') }}</p>
+      </div>
+      {% if project.details and project.details.get('client_poc') %}
+      <div>
+        <p class="small muted" style="margin:0 0 4px">Client POC</p>
+        <p style="margin:0">
+          {% set poc = project.details.client_poc %}
+          {{ poc.name or '—' }}
+          {% if poc.email %}<br><a href="mailto:{{ poc.email }}" class="small">{{ poc.email }}</a>{% endif %}
+        </p>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if project.details and project.details.get('company_alias') %}
+    <div>
+      <p class="small muted" style="margin:0 0 4px">Company / Entity</p>
+      <p style="margin:0">{{ project.details.company_alias }}</p>
+    </div>
+    {% endif %}
+
+    {% if project.details and project.details.get('remarks') %}
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+      <p class="small muted" style="margin:0 0 4px">Project remarks</p>
+      <p style="margin:0;white-space:pre-line">{{ project.details.remarks }}</p>
+    </div>
+    {% endif %}
+
+    {% if project.scope_description %}
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+      <p class="small muted" style="margin:0 0 4px">Scope</p>
+      <p style="margin:0">{{ project.scope_description }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if can_edit_project %}
+  <!-- INLINE EDIT FORM (hidden by default; toggled by the Edit button) -->
+  <div id="project-edit-form" hidden style="padding:16px 20px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+      <label>
+        Project name
+        <input id="pe-name" type="text" value="{{ project.name }}" required>
+      </label>
+      <label>
+        Client name
+        <input id="pe-client" type="text" value="{{ project.client_name }}" required>
+      </label>
+      <label>
+        Sector
+        <select id="pe-sector">
+          {% set _sectors = ['', 'Government', 'System Integrator',
+                             'Critical Information Infrastructure (CII)',
+                             'Commercial', 'Financial Services', 'Healthcare', 'Other'] %}
+          {% for s in _sectors %}
+          <option value="{{ s }}" {% if (project.sector or '') == s %}selected{% endif %}>{{ s or '-- Select --' }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Estimated start date
+        <input id="pe-start" type="date"
+               value="{% if project.testing_start %}{{ project.testing_start.strftime('%Y-%m-%d') }}{% endif %}">
+      </label>
+      <label>
+        Estimated end date
+        <input id="pe-end" type="date"
+               value="{% if project.testing_end %}{{ project.testing_end.strftime('%Y-%m-%d') }}{% endif %}">
+      </label>
+      <label>
+        Client POC name
+        <input id="pe-poc-name" type="text"
+               value="{% if project.details and project.details.get('client_poc') %}{{ project.details.client_poc.get('name') or '' }}{% endif %}">
+      </label>
+      <label>
+        Client POC email
+        <input id="pe-poc-email" type="email"
+               value="{% if project.details and project.details.get('client_poc') %}{{ project.details.client_poc.get('email') or '' }}{% endif %}">
+      </label>
+    </div>
+    <label style="display:block;margin-top:14px">
+      Scope description
+      <textarea id="pe-scope-desc" rows="2">{{ project.scope_description or '' }}</textarea>
+    </label>
+    <label style="display:block;margin-top:8px">
+      Company / Entity name
+      <select id="pe-company-alias">
+        <option value="">-- Loading aliases… --</option>
+      </select>
+      <small class="muted">Drives footer, Confidentiality Statement, Executive Summary, and Introduction in all reports.</small>
+    </label>
+    <label style="display:block;margin-top:8px">
+      Project remarks / comments
+      <textarea id="pe-remarks" rows="3"
+                placeholder="e.g. 5 SCR + 2 Web VAPT. Client prefers updates on Mondays.">{% if project.details and project.details.get('remarks') %}{{ project.details.remarks }}{% endif %}</textarea>
+    </label>
+    <p id="project-edit-msg" class="small" style="margin:10px 0 0;min-height:1.4em"></p>
+  </div>
+  {% endif %}
+
+  <!-- Scope targets block sits below regardless of edit mode — it's the
+       read-only display and the in-place editor lives on the report
+       edit page (see backend/app/templates/reports/edit.html). -->
+  <div style="padding:0 20px 16px">
+
+    <!-- Scope targets (read-only here).
+         Scope import moved to the new-report flow (only infrastructure /
+         IoT report templates surface the importer). A single project can
+         host many report types — thick client, web, etc. — so making the
+         importer a per-report action keeps it out of the way for
+         non-infra work. -->
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <p class="small muted" style="margin:0">Scope targets ({{ (project.scope_targets or [])|length }})</p>
+        <span class="muted small" title="Scope is imported from Nessus / Excel on the New Report screen for Infra VA / Infra VAPT / IoT report types.">
+          Import via New Report ↗
+        </span>
+      </div>
+      {% if project.scope_targets %}
+      <ul id="scope-list"
+          style="margin:0;padding:8px 12px;background:var(--surface-2);
+                 border-radius:6px;font-family:ui-monospace,Consolas,monospace;font-size:12px;
+                 max-height:160px;overflow:auto;list-style:none">
+        {% for t in project.scope_targets %}
+        <li style="padding:1px 0">{{ t }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted small" id="scope-empty">No scope targets yet. Create an Infra / IoT report under this project to import from Nessus / Excel.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Scope import moved to /reports/new — gated by template type
+     (see backend/app/templates/reports/new.html). Only Infra VA / VAPT
+     and IoT report templates surface the importer now. A single project
+     can host many report types so a per-project importer was the wrong
+     home for it. The endpoints `/api/reports/{rid}/scope/{parse,apply}`
+     replace the previous project-level ones from the UI's perspective
+     (the project endpoints remain reachable as an internal fallback). -->
+
+<!-- Team Access / Share Section -->
+<div class="card" style="margin-top:20px">
+  <div class="card-h">
+    <h2>Team Access</h2>
+    <span class="badge" id="team-count">0 members</span>
+  </div>
+  <div style="padding:16px 20px">
+    <p class="small muted" style="margin:0 0 12px">Assign users to give them full access to this project, findings, and reports.</p>
+    
+    <!-- User Search & Assign -->
+    <div style="display:flex;gap:12px;align-items:end;margin-bottom:20px">
+      <div style="flex:1;position:relative">
+        <label style="margin:0">
+          Search & Select User
+          <input 
+            type="text" 
+            id="user-search" 
+            placeholder="Type to search users..." 
+            autocomplete="off"
+            style="width:100%"
+          >
+        </label>
+        <div id="team-user-results" class="team-user-results" style="position:absolute;top:100%;left:0;right:0;z-index:1000;margin-top:4px" hidden></div>
+      </div>
+      <button class="btn-primary" onclick="assignSelectedUser()" id="assign-btn" disabled style="align-self:end">
+        <span id="assign-btn-text">Select a user</span>
+      </button>
+    </div>
+    
+    <!-- Current Team List -->
+    <div style="border-top:1px solid var(--border);padding-top:16px">
+      <h3 style="margin:0 0 12px;font-size:14px">Current Team Members</h3>
+      <ul id="team-list" style="list-style:none;padding:0;margin:0">
+        <li class="muted small">Loading...</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Project Documents Section -->
+<div class="card" style="margin-top:20px">
+  <div class="card-h" id="proj-docs-header"
+       style="cursor:pointer;user-select:none"
+       title="Click to expand / collapse">
+    <h2>Project Documents</h2>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="muted small" id="po-count">0 documents</span>
+      <button class="btn-link small" id="proj-docs-toggle" type="button"
+              style="background:none;border:none;color:var(--text-2);cursor:pointer;padding:0">
+        ▲ Collapse
+      </button>
+    </div>
+  </div>
+  <div id="proj-docs-body" style="padding:16px 20px">
+
+    <!-- Purchase Order sub-section -->
+    <div style="margin-bottom:20px">
+      <h3 style="font-size:14px;font-weight:600;margin:0 0 6px;color:var(--text)">Purchase Order</h3>
+      <p class="small muted" style="margin:0 0 10px">Upload purchase orders and engagement letters here.</p>
+      <form id="po-upload-form-po" enctype="multipart/form-data"
+            style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:8px">
+        <input type="hidden" name="category" value="po">
+        <label style="flex:1;min-width:240px;margin:0">
+          <input type="file" name="file" multiple required>
+        </label>
+        <button class="btn-primary" type="submit">Upload</button>
+      </form>
+      <p id="po-msg-po" class="small" style="margin:0 0 8px;min-height:1.4em"></p>
+      <ul id="po-list-po" style="list-style:none;padding:0;margin:0">
+        <li class="muted small">Loading…</li>
+      </ul>
+    </div>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:0 0 20px">
+
+    <!-- Logs sub-section -->
+    <div>
+      <h3 style="font-size:14px;font-weight:600;margin:0 0 6px;color:var(--text)">Logs</h3>
+      <p class="small muted" style="margin:0 0 10px">Upload all scan logs here — Nmap, Burp Suite exports, Nessus, certificates, meeting notes, etc.</p>
+      <form id="po-upload-form-logs" enctype="multipart/form-data"
+            style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:8px">
+        <input type="hidden" name="category" value="logs">
+        <label style="flex:1;min-width:240px;margin:0">
+          <input type="file" name="file" multiple required>
+        </label>
+        <button class="btn-primary" type="submit">Upload</button>
+      </form>
+      <p id="po-msg-logs" class="small" style="margin:0 0 8px;min-height:1.4em"></p>
+      <ul id="po-list-logs" style="list-style:none;padding:0;margin:0">
+        <li class="muted small">Loading…</li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+<!-- Reports Section -->
+<div class="card" style="margin-top:20px">
+  <div class="card-h">
+    <h2>Reports</h2>
+    <span class="badge">{{ report_rows|length }}</span>
+  </div>
+  <div style="padding:16px 20px">
+    {% if report_rows %}
+      <div style="display:grid;gap:10px">
+        {% for r in report_rows %}
+        <a href="/reports/{{ r.id }}" class="report-row" style="text-decoration:none;color:inherit;display:block">
+          <div style="padding:14px 16px;border:1px solid var(--border);border-radius:8px;
+                      background:var(--surface);transition:border-color .15s, background .15s">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+              <div style="min-width:0">
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                  <strong style="font-size:14px">{{ r.name }}</strong>
+                  <span class="tpl-pill">v{{ r.current_version }}</span>
+                  {% if r.template_name %}
+                    <span class="tpl-pill" style="background:var(--accent-soft);color:var(--accent-dark)">
+                      {{ r.template_name }}
+                    </span>
+                  {% endif %}
+                </div>
+                <p class="small muted" style="margin:6px 0 0">
+                  Owner:
+                  <strong>{{ r.owner_full_name or r.owner_username or '—' }}</strong>
+                  {% if r.is_mine %}<span class="tpl-pill"
+                      style="background:var(--accent-soft);color:var(--accent-dark);margin-left:4px">you</span>{% endif %}
+                  <span class="muted">·</span>
+                  {{ r.access_count }} additional grant{{ '' if r.access_count == 1 else 's' }}
+                  <span class="muted">·</span>
+                  created {{ r.created_at.strftime('%d %b %Y') }}
+                </p>
+              </div>
+              <span class="muted small" style="white-space:nowrap">Open →</span>
+            </div>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted" style="margin:0 0 14px">No reports yet. Create your first one!</p>
+    {% endif %}
+
+    <!-- Primary action lives at the bottom of the Reports card so it sits
+         immediately after the (possibly empty) list of reports — keeps
+         the "I want to add a report" intent visually grouped with the
+         reports it produces. -->
+    <div class="actions" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+      <button class="btn-primary"
+              onclick="window.location='/reports/new?project_id={{ project.id }}'">
+        + New Report
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+.team-user-results {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.user-dropdown-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+
+.user-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.user-dropdown-item:hover {
+  background: var(--surface-2);
+}
+
+.user-dropdown-item strong {
+  display: block;
+  font-size: 14px;
+}
+
+.user-dropdown-item .muted {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.team-member-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.team-member-item:last-child {
+  margin-bottom: 0;
+}
+</style>
+
+<script nonce="{{ request.state.csp_nonce }}">
+const PROJECT_ID = {{ project.id }};
+let allUsers = [];
+let selectedUserId = null;
+
+function escapeHtml(s) {
+  return (s == null ? "" : String(s)).replace(/[&<>"']/g,
+    c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+// Load all users and team on page load
+async function init() {
+  await loadUsers();
+  await loadTeam();
+}
+
+// Load all users from database
+async function loadUsers() {
+  try {
+    const resp = await fetch('/api/users', {credentials: 'include'});
+    if (!resp.ok) {
+      console.error('Failed to load users');
+      return;
+    }
+    const data = await resp.json();
+    allUsers = Array.isArray(data) ? data : [];
+  } catch (err) {
+    console.error('Error loading users:', err);
+  }
+}
+
+// Search functionality
+const searchInput = document.getElementById('user-search');
+const dropdown = document.getElementById('team-user-results');
+
+searchInput.addEventListener('input', (e) => {
+  const query = e.target.value.toLowerCase().trim();
+  
+  if (query.length < 1) {
+    dropdown.hidden = true;
+    return;
+  }
+  
+  // Filter users by username or email
+  const filtered = allUsers.filter(u => 
+    u.username.toLowerCase().includes(query) ||
+    (u.email && u.email.toLowerCase().includes(query))
+  ).slice(0, 10); // Limit to 10 results
+  
+  if (filtered.length === 0) {
+    dropdown.innerHTML = '<div style="padding:10px 14px;color:var(--muted)">No users found</div>';
+    dropdown.hidden = false;
+    return;
+  }
+  
+  dropdown.innerHTML = filtered.map(u => `
+    <div class="user-dropdown-item"
+         data-user-id="${u.id}"
+         data-username="${escapeHtml(u.username)}"
+         data-role="${escapeHtml(u.role)}">
+      <strong>${escapeHtml(u.username)}</strong>
+      <p class="muted" style="margin:0">${escapeHtml(u.role)}${u.email ? ' · ' + escapeHtml(u.email) : ''}</p>
+    </div>
+  `).join('');
+
+  dropdown.hidden = false;
+});
+
+// Event delegation for dropdown items (avoids CSP-blocked inline onclick)
+dropdown.addEventListener('click', (e) => {
+  const item = e.target.closest('.user-dropdown-item');
+  if (!item) return;
+  selectUser(parseInt(item.dataset.userId, 10), item.dataset.username, item.dataset.role);
+});
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#user-search') && !e.target.closest('#team-user-results')) {
+    dropdown.hidden = true;
+  }
+});
+
+// Select user from dropdown
+function selectUser(userId, username, role) {
+  selectedUserId = userId;
+  searchInput.value = `${username} (${role})`;
+  dropdown.hidden = true;
+  
+  // Enable assign button
+  const btn = document.getElementById('assign-btn');
+  btn.disabled = false;
+  btn.querySelector('#assign-btn-text').textContent = `Assign ${username}`;
+}
+
+// Assign selected user to project
+async function assignSelectedUser() {
+  if (!selectedUserId) {
+    alert('Please select a user first');
+    return;
+  }
+  
+  const btn = document.getElementById('assign-btn');
+  const originalText = btn.querySelector('#assign-btn-text').textContent;
+  btn.disabled = true;
+  btn.querySelector('#assign-btn-text').textContent = 'Assigning...';
+  
+  try {
+    const resp = await fetch(`/api/projects/${PROJECT_ID}/assign`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({user_id: selectedUserId}),
+      credentials: 'include'
+    });
+    
+    if (resp.ok) {
+      // Reset form
+      searchInput.value = '';
+      selectedUserId = null;
+      btn.querySelector('#assign-btn-text').textContent = 'Select a user';
+      
+      // Reload team list
+      await loadTeam();
+      
+      // Show success
+      alert('✓ User assigned successfully!');
+    } else {
+      const err = await resp.json();
+      alert('Error: ' + (err.detail || resp.status));
+      btn.disabled = false;
+      btn.querySelector('#assign-btn-text').textContent = originalText;
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+    btn.disabled = false;
+    btn.querySelector('#assign-btn-text').textContent = originalText;
+  }
+}
+
+// Load current team members
+async function loadTeam() {
+  try {
+    const resp = await fetch(`/api/projects/${PROJECT_ID}/team`, {credentials: 'include'});
+    if (!resp.ok) {
+      document.getElementById('team-list').innerHTML = '<li class="muted small">Error loading team</li>';
+      return;
+    }
+    
+    const team = await resp.json();
+    const list = document.getElementById('team-list');
+    
+    // Update count badge
+    document.getElementById('team-count').textContent = `${team.length} member${team.length !== 1 ? 's' : ''}`;
+    
+    if (team.length === 0) {
+      list.innerHTML = '<li class="muted small">No team members assigned yet. Assign users above.</li>';
+      return;
+    }
+    
+    list.innerHTML = team.map(u => `
+      <li class="team-member-item">
+        <div>
+          <strong>${escapeHtml(u.username)}</strong>
+          <p class="muted small" style="margin:2px 0 0">
+            ${escapeHtml(u.role)}${u.email ? ' · ' + escapeHtml(u.email) : ''}
+          </p>
+        </div>
+        <button class="btn-danger btn-sm"
+                data-remove-user-id="${u.id}"
+                data-remove-username="${escapeHtml(u.username)}">
+          Remove
+        </button>
+      </li>
+    `).join('');
+  } catch (err) {
+    console.error('Error loading team:', err);
+    document.getElementById('team-list').innerHTML = '<li class="muted small">Error loading team</li>';
+  }
+}
+
+// Event delegation for Remove buttons in the team list (avoids CSP-blocked inline onclick)
+document.getElementById('team-list').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-remove-user-id]');
+  if (!btn) return;
+  removeTeamMember(parseInt(btn.dataset.removeUserId, 10), btn.dataset.removeUsername);
+});
+
+// Remove team member
+async function removeTeamMember(userId, username) {
+  if (!confirm(`Remove ${username} from this project?`)) {
+    return;
+  }
+  
+  try {
+    const resp = await fetch(`/api/projects/${PROJECT_ID}/team/${userId}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    
+    if (resp.ok) {
+      await loadTeam();
+      alert(`✓ ${username} removed from project`);
+    } else {
+      const err = await resp.json();
+      alert('Error: ' + (err.detail || resp.status));
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+// Initialize on page load
+init();
+
+// ============================================================
+// Project Details: inline edit
+// Placed here (after the HTML elements) so getElementById finds them.
+// ============================================================
+(function(){
+  const editBtn   = document.getElementById('project-edit-btn');
+  const cancelBtn = document.getElementById('project-cancel-edit');
+  const saveBtn   = document.getElementById('project-save-edit');
+  const readonly  = document.getElementById('project-readonly');
+  const form      = document.getElementById('project-edit-form');
+  const msg       = document.getElementById('project-edit-msg');
+  if (!editBtn || !readonly || !form) return;
+
+  function setEditMode(on){
+    readonly.hidden  = !!on;
+    form.hidden      = !on;
+    editBtn.hidden   = !!on;
+    cancelBtn.hidden = !on;
+    saveBtn.hidden   = !on;
+    if (msg) msg.textContent = '';
+  }
+
+  // Populate company alias select whenever the edit panel is opened
+  async function loadCompanyAliases(){
+    const sel = document.getElementById('pe-company-alias');
+    if (!sel) return;
+    const current = {{ ((project.details or {}).get('company_alias') or '') | tojson }};
+    try {
+      const r = await fetch('/api/admin/panel/company-aliases', {credentials: 'include'});
+      if (r.ok) {
+        const data = await r.json();
+        sel.innerHTML = '<option value="">-- Select --</option>' +
+          data.aliases.map(a => {
+            const esc = a.replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const sel_ = a === current ? ' selected' : '';
+            return `<option value="${esc}"${sel_}>${esc}</option>`;
+          }).join('');
+      }
+    } catch {}
+  }
+
+  editBtn.addEventListener('click', () => { setEditMode(true); loadCompanyAliases(); });
+  cancelBtn.addEventListener('click', () => setEditMode(false));
+
+  saveBtn.addEventListener('click', async () => {
+    const v = (id) => (document.getElementById(id) || {}).value || '';
+    const name        = v('pe-name').trim();
+    const client_name = v('pe-client').trim();
+    if (!name || !client_name){
+      msg.textContent = 'Project name and Client name are required.';
+      msg.style.color = 'var(--err-fg)';
+      return;
+    }
+    const start         = v('pe-start');
+    const end           = v('pe-end');
+    const poc_name      = v('pe-poc-name').trim();
+    const poc_email     = v('pe-poc-email').trim();
+    const remarks       = v('pe-remarks').trim();
+    const company_alias = v('pe-company-alias').trim();
+
+    let details = {{ (project.details or {}) | tojson }};
+    if (typeof details !== 'object' || details === null) details = {};
+
+    if (poc_name || poc_email){
+      details.client_poc = {name: poc_name || null, email: poc_email || null};
+    } else {
+      delete details.client_poc;
+    }
+    if (remarks){
+      details.remarks = remarks;
+    } else {
+      delete details.remarks;
+    }
+    if (company_alias){
+      details.company_alias = company_alias;
+    } else {
+      delete details.company_alias;
+    }
+
+    const payload = {
+      name: name,
+      client_name: client_name,
+      sector: v('pe-sector') || null,
+      scope_description: v('pe-scope-desc') || null,
+      scope_targets: {{ (project.scope_targets or []) | tojson }},
+      testing_start: start ? new Date(start).toISOString() : null,
+      testing_end:   end   ? new Date(end).toISOString()   : null,
+      details: details,
+    };
+
+    msg.textContent = 'Saving…';
+    msg.style.color = 'var(--text-2)';
+    saveBtn.disabled = true;
+    try {
+      const r = await fetch(`/api/projects/{{ project.id }}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok){
+        let detail = r.statusText;
+        try { detail = (await r.json()).detail || detail; } catch(_){}
+        throw new Error(detail);
+      }
+      msg.textContent = '✓ Saved. Refreshing…';
+      msg.style.color = 'var(--ok-fg)';
+      setTimeout(() => location.reload(), 600);
+    } catch (err){
+      msg.textContent = 'Failed: ' + (err.message || err);
+      msg.style.color = 'var(--err-fg)';
+      saveBtn.disabled = false;
+    }
+  });
+})();
+
+// ============================================================
+// Project Documents: expand / collapse
+// ============================================================
+(function(){
+  const header = document.getElementById('proj-docs-header');
+  const body   = document.getElementById('proj-docs-body');
+  const toggle = document.getElementById('proj-docs-toggle');
+  if (!header || !body || !toggle) return;
+
+  header.addEventListener('click', (e) => {
+    // Don't collapse if the user clicked the Upload button inside the header
+    if (e.target.closest('button') && e.target.closest('button') !== toggle) return;
+    const isCollapsed = body.hidden;
+    body.hidden = !isCollapsed;
+    toggle.textContent = isCollapsed ? '▲ Collapse' : '▼ Expand';
+  });
+})();
+
+// ============================================================
+// Project Documents upload + listing
+// ============================================================
+(function(){
+  const countEl = document.getElementById('po-count');
+
+  function fmtBytes(n){
+    if (!n) return '';
+    const k = 1024;
+    if (n < k) return n + ' B';
+    if (n < k*k) return (n/k).toFixed(1) + ' KB';
+    return (n/(k*k)).toFixed(1) + ' MB';
+  }
+
+  function escHtml(s){
+    return (s == null ? '' : String(s)).replace(/[&<>"']/g,
+      c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function renderItems(listEl, items){
+    if (!items.length){
+      listEl.innerHTML = '<li class="muted small">No documents uploaded yet.</li>';
+      return;
+    }
+    listEl.innerHTML = items.map(d => `
+      <li style="display:flex;flex-direction:column;
+                 padding:10px 12px;border:1px solid var(--border);
+                 border-radius:8px;margin-bottom:6px;background:var(--surface)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div>
+            <strong>${escHtml(d.original_name)}</strong>
+            <div class="muted small">${escHtml(d.uploaded_at?.slice(0,16) || '')} · ${escHtml(fmtBytes(d.size_bytes))}</div>
+          </div>
+          <div class="actions">
+            <button class="btn-primary btn-sm" type="button"
+                    data-po-preview="${d.id}"
+                    data-po-name="${escHtml(d.original_name)}">Preview</button>
+            <a class="btn-secondary btn-sm" href="/api/projects/${PROJECT_ID}/po/${d.id}/download">Download</a>
+            <button class="btn-danger btn-sm" type="button"
+                    data-po-delete="${d.id}">Remove</button>
+          </div>
+        </div>
+        <div class="po-preview-host" data-id="${d.id}" hidden style="margin-top:10px"></div>
+      </li>`).join('');
+  }
+
+  async function loadPOs(){
+    const listPo   = document.getElementById('po-list-po');
+    const listLogs = document.getElementById('po-list-logs');
+    listPo.innerHTML   = '<li class="muted small">Loading…</li>';
+    listLogs.innerHTML = '<li class="muted small">Loading…</li>';
+    try {
+      const r = await fetch(`/api/projects/${PROJECT_ID}/po`, {credentials:'include'});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      const items = data.items || [];
+      countEl.textContent = `${items.length} document${items.length === 1 ? '' : 's'}`;
+      renderItems(listPo,   items.filter(d => d.category !== 'logs'));
+      renderItems(listLogs, items.filter(d => d.category === 'logs'));
+    } catch (e){
+      document.getElementById('po-list-po').innerHTML =
+        `<li style="color:var(--err-fg)">${escHtml(e.message)}</li>`;
+      document.getElementById('po-list-logs').innerHTML = '';
+    }
+  }
+
+  function wireList(listEl){
+    listEl.addEventListener('click', (e) => {
+      const previewBtn = e.target.closest('[data-po-preview]');
+      if (previewBtn){ window.previewPO(previewBtn.dataset.poPreview, previewBtn.dataset.poName); return; }
+      const deleteBtn = e.target.closest('[data-po-delete]');
+      if (deleteBtn){ window.deletePO(deleteBtn.dataset.poDelete); return; }
+      const closeBtn = e.target.closest('[data-po-close]');
+      if (closeBtn){ window.previewPO(closeBtn.dataset.poClose, closeBtn.dataset.poName); }
+    });
+  }
+  wireList(document.getElementById('po-list-po'));
+  wireList(document.getElementById('po-list-logs'));
+
+  window.deletePO = async function(id){
+    if (!confirm('Remove this document?')) return;
+    try {
+      const r = await fetch(`/api/projects/${PROJECT_ID}/po/${id}`,
+                            {method:'DELETE', credentials:'include'});
+      if (!r.ok){ let d=r.statusText; try{d=(await r.json()).detail||d;}catch(_){} throw new Error(d); }
+      await loadPOs();
+    } catch (e){ alert('Failed: ' + e.message); }
+  };
+
+  window.previewPO = async function(id, filename){
+    const host = document.querySelector(`.po-preview-host[data-id="${id}"]`);
+    if (!host) return;
+    if (!host.hidden && host.dataset.openId === id){
+      host.hidden = true; host.innerHTML = '';
+      return;
+    }
+    host.hidden = false;
+    host.dataset.openId = id;
+    host.innerHTML = '<p class="muted small" style="padding:10px">Loading preview…</p>';
+    try {
+      const r = await fetch(`/api/projects/${PROJECT_ID}/po/${id}/preview`,
+                             {method:'GET', credentials:'include'});
+      if (!r.ok){
+        const txt = await r.json().catch(() => ({detail: r.statusText}));
+        host.innerHTML =
+          `<p style="color:var(--err-fg);padding:10px">Preview failed: ${escHtml(txt.detail || r.statusText)}<br>` +
+          `<small>Download the file to view it.</small></p>`;
+        return;
+      }
+      const blob = await r.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const ct = r.headers.get('content-type') || blob.type || '';
+      const isImage = ct.startsWith('image/');
+      const isHtml  = ct.includes('text/html');
+      const hdr =
+        `<div style="display:flex;justify-content:space-between;align-items:center;` +
+        `padding:6px 8px;background:var(--surface-2);border:1px solid var(--border);` +
+        `border-radius:6px 6px 0 0;font-size:12px">` +
+        `<strong>${escHtml(filename)}</strong>` +
+        `<button class="btn-link small" type="button" data-po-close="${id}" data-po-name="${escHtml(filename)}">✕ Close preview</button>` +
+        `</div>`;
+      const body = isImage
+        ? `<img src="${blobUrl}" style="max-width:100%;border:1px solid var(--border);border-top:0;border-radius:0 0 6px 6px;">`
+        : isHtml
+          ? `<iframe src="${blobUrl}" style="width:100%;height:70vh;border:1px solid var(--border);border-top:0;border-radius:0 0 6px 6px;background:#fff"></iframe>`
+          : `<embed src="${blobUrl}" type="application/pdf" style="width:100%;height:70vh;border:1px solid var(--border);border-top:0;border-radius:0 0 6px 6px;background:#fff">`;
+      host.innerHTML = hdr + body;
+      setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch(_){} }, 120000);
+    } catch (e){
+      host.innerHTML = `<p style="color:var(--err-fg);padding:10px">Preview failed: ${escHtml(e.message)}</p>`;
+    }
+  };
+
+  function wireForm(formEl, msgEl){
+    formEl.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const category = formEl.querySelector('input[name="category"]').value;
+      const fileInput = formEl.querySelector('input[type="file"]');
+      const files = Array.from(fileInput.files);
+      if (!files.length) return;
+      const btn = formEl.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      msgEl.style.color = 'var(--text-2)';
+      msgEl.textContent = files.length > 1 ? `Uploading 1 / ${files.length}…` : 'Uploading…';
+      let failed = 0;
+      for (let i = 0; i < files.length; i++){
+        if (files.length > 1) msgEl.textContent = `Uploading ${i + 1} / ${files.length}…`;
+        const fd = new FormData();
+        fd.append('file', files[i]);
+        fd.append('category', category);
+        try {
+          const r = await fetch(`/api/projects/${PROJECT_ID}/po`,
+                                {method:'POST', body:fd, credentials:'include'});
+          if (!r.ok){ let d=r.statusText; try{d=(await r.json()).detail||d;}catch(_){} throw new Error(d); }
+        } catch(err){
+          failed++;
+          console.error('Upload failed for', files[i].name, err.message);
+        }
+      }
+      btn.disabled = false;
+      formEl.reset();
+      if (failed === 0){
+        msgEl.textContent = files.length > 1 ? `✓ ${files.length} files uploaded` : '✓ Uploaded';
+        msgEl.style.color = 'var(--ok-fg)';
+      } else {
+        msgEl.textContent = `${failed} of ${files.length} file${files.length === 1 ? '' : 's'} failed`;
+        msgEl.style.color = 'var(--err-fg)';
+      }
+      await loadPOs();
+    });
+  }
+  wireForm(document.getElementById('po-upload-form-po'),   document.getElementById('po-msg-po'));
+  wireForm(document.getElementById('po-upload-form-logs'),  document.getElementById('po-msg-logs'));
+
+  loadPOs();
+})();
+</script>
+{% endblock %}

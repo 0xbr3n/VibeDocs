@@ -4,7 +4,7 @@
 
 # VibeDocs
 
-### A vibecoded pentest report generator — by Brendon Teo
+### A vibecoded pentest report generator
 
 *Turns tedious penetration-test findings into clean, consistent Word & PDF deliverables. So that you can continue vibing.*
 
@@ -55,9 +55,6 @@
 ---
 
 ## 🖼️ Screenshots
-
-> Drop your own captures into `docs/screenshots/` — the filenames below are placeholders.
-
 | Dashboard | Report editor |
 |---|---|
 | ![Dashboard](docs/screenshots/01-dashboard.png) | ![Report editor](docs/screenshots/02-report-editor.png) |

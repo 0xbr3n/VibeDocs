@@ -25,8 +25,6 @@
 > and one-click **Word / PDF** generation with an **Excel risk-register** export —
 > all self-hosted, no cloud, no accounts. Just a docker image. It's heavily **inspired by
 > [pwndoc](https://github.com/pwndoc/pwndoc)**, rebuilt my way in Python.
->
-> — *Brendon Teo*
 
 <div align="center">
 <img src="docs/gifs/demo.gif" alt="VibeDocs demo" width="90%">
